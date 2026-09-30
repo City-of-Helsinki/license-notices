@@ -1,0 +1,7 @@
+# Minimum age for new packages before they can be used (in minutes) – 10080 min = 1 week
+minimumReleaseAge: 10080
+
+# pnpm 11 requires explicit opt-in for packages that run install scripts.
+allowBuilds:
+  # Vite 7 depends on esbuild, which the Vite 7 compatibility job in CI installs.
+  esbuild: true
