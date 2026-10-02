@@ -1,6 +1,6 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   createViteLicensePlugin,
@@ -105,7 +105,7 @@ export function wrapText(text: string, columns = WRAP_COLUMNS): string {
   const lines: string[] = [];
   let line = '';
 
-  for (const word of text.match(/\S*"[^"]*"\S*|\S+/g) ?? []) {
+  for (const word of text.match(/(?:[^\s"]|"[^"]*")+|\S+/g) ?? []) {
     if (line.length === 0) {
       line = word;
     } else if (`${line} ${word}`.length <= columns) {
@@ -409,9 +409,7 @@ export function resolvePackage(
   if (pkg.licenseText) {
     // Leading blank lines only, so that an indented first line such as the
     // centred Apache-2.0 title keeps its indentation.
-    resolved.licenseText = pkg.licenseText
-      .replace(/^\n+/, '')
-      .replace(/\s+$/, '');
+    resolved.licenseText = pkg.licenseText.replace(/^\n+/, '').trimEnd();
     return resolved;
   }
 
@@ -432,7 +430,7 @@ export function resolvePackage(
     );
   }
 
-  resolved.licenseText = reconstructed.replace(/\s+$/, '');
+  resolved.licenseText = reconstructed.trimEnd();
   resolved.licenseTextReconstructed = true;
   return resolved;
 }
@@ -442,7 +440,7 @@ export function resolvePackage(
  * Their terms go beyond attribution, so a package under one of them is only
  * distributed when the notices have rules for exactly that license.
  */
-const COPYLEFT_LICENSE = /\b((A|L)?GPL|EUPL)-\d/;
+const COPYLEFT_LICENSE = /\b([AL]?GPL|EUPL)-\d/;
 
 /** GPL-2.0 alone, in its current and deprecated SPDX spellings. */
 function isGpl2(license: string): boolean {
@@ -492,7 +490,7 @@ function renderGnuGeneralPublicLicenseAppendix(): string {
         'under the terms of this license.'
     ),
     '',
-    text.replace(/\s+$/, ''),
+    text.trimEnd(),
   ].join('\n');
 }
 
@@ -583,7 +581,7 @@ export function renderNotices(
     'The application itself is distributed under the following license.',
     // Kept on an unwrapped line of its own so the link stays clickable.
     `Source: ${config.repositoryUrl}`,
-    ...(projectLicenseText ? ['', projectLicenseText.replace(/\s+$/, '')] : []),
+    ...(projectLicenseText ? ['', projectLicenseText.trimEnd()] : []),
   ].join('\n');
 
   return [
@@ -661,9 +659,7 @@ export function thirdPartyLicenses(config: ThirdPartyLicensesConfig): Plugin {
     );
 
   const manifestFileName =
-    config.manifestFileName === undefined
-      ? DEFAULT_MANIFEST_FILE_NAME
-      : config.manifestFileName;
+    config.manifestFileName ?? DEFAULT_MANIFEST_FILE_NAME;
 
   const plugin = createViteLicensePlugin({
     outputFilename: false,
