@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  common:
+    uses: City-of-Helsinki/.github/.github/workflows/ci-pnpm-node.yml@main
+    # A called workflow gets no more than its caller grants, and the
+    # dependency review of the shared CI comments on the pull request.
+    permissions:
+      contents: read
+      pull-requests: write
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    with:
+      node-version: 24.x
+      typecheck: true
+
+  # The shared CI tests Node 24 with Vite 8. The package also supports Node 22
+  # and Vite 7, and the remaining combinations are tested here.
+  compatibility:
+    name: Test on Node ${{ matrix.node }} with Vite ${{ matrix.vite }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node: 22.x
+            vite: 8
+          - node: 22.x
+            vite: 7
+          - node: 24.x
+            vite: 7
+    env:
+      HUSKY: 0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install Vite ${{ matrix.vite }}
+        if: ${{ matrix.vite != 8 }}
+        run: pnpm add --save-dev "vite@^${{ matrix.vite }}"
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
