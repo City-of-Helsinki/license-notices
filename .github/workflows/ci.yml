@@ -24,8 +24,8 @@ jobs:
       node-version: 24.x
       typecheck: true
 
-  # The shared CI covers the newest Node and Vite. The package also supports
-  # Node 22 and Vite 7, and those are tested here.
+  # The shared CI tests Node 24 with Vite 8. The package also supports Node 22
+  # and Vite 7, and the remaining combinations are tested here.
   compatibility:
     name: Test on Node ${{ matrix.node }} with Vite ${{ matrix.vite }}
     runs-on: ubuntu-latest
@@ -35,6 +35,8 @@ jobs:
         include:
           - node: 22.x
             vite: 8
+          - node: 22.x
+            vite: 7
           - node: 24.x
             vite: 7
     env:
