@@ -1,6 +1,6 @@
 {
   "name": "@city-of-helsinki/license-notices",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Third-party license notices for the production build of a Vite application",
   "keywords": [
     "vite-plugin",
