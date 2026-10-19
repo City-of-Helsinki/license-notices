@@ -1,8 +1,8 @@
 # @city-of-helsinki/license-notices
 
-A Vite plugin that writes the license notices of every third-party package
-bundled into a production build, and serves them from the root of the
-deployed application.
+Writes the license notices of every third-party package bundled into the
+production build of a Vite or Next.js application, and serves them from the
+root of the deployed application.
 
 ## Why
 
@@ -18,7 +18,7 @@ source license attaches conditions to that distribution:
   complete corresponding source (section 3).
 
 A minified bundle carries none of this: minification strips the license
-comments, and the license files stay behind in `node_modules`. This plugin
+comments, and the license files stay behind in `node_modules`. This package
 collects them at build time from exactly the packages that ended up in the
 bundle, and writes them next to it:
 
@@ -28,7 +28,7 @@ bundle, and writes them next to it:
 Both are generated on every build, so they always describe the build they ship
 with. Neither is committed to the repository.
 
-The plugin prefers failing the build to shipping something nobody has
+It prefers failing the build to shipping something nobody has
 checked: a license it cannot identify, a license decision that no longer
 matches the package, or a copyleft license it has no notice rules for all stop
 the build with a message that says what to check. See
@@ -42,8 +42,8 @@ the build with a message that says what to check. See
    pnpm add --save-dev @city-of-helsinki/license-notices
    ```
 
-2. Put everything specific to the repository in a config file of its own, for
-   example `scripts/thirdPartyLicenses.config.ts`:
+2. Put everything specific to the repository in a config file of its own. For
+   Vite, for example `scripts/thirdPartyLicenses.config.ts`:
 
    ```ts
    import type { ThirdPartyLicensesConfig } from '@city-of-helsinki/license-notices';
@@ -53,33 +53,32 @@ the build with a message that says what to check. See
    };
    ```
 
-3. Add the plugin to `vite.config.ts`:
+   A CommonJS `next.config.js` cannot load a TypeScript file, so for Next, for
+   example `scripts/thirdPartyLicenses.config.js`, typed with JSDoc:
 
-   ```ts
-   import { thirdPartyLicenses } from '@city-of-helsinki/license-notices';
+   ```js
+   /** @type {import('@city-of-helsinki/license-notices/next').ThirdPartyLicensesConfig} */
+   const thirdPartyLicensesConfig = {
+     repositoryUrl: 'https://github.com/City-of-Helsinki/<repository>',
+   };
 
-   import { thirdPartyLicensesConfig } from './scripts/thirdPartyLicenses.config';
-
-   export default defineConfig({
-     plugins: [
-       // ...
-       thirdPartyLicenses(thirdPartyLicensesConfig),
-     ],
-   });
+   module.exports = { thirdPartyLicensesConfig };
    ```
 
-   The plugin only runs in `vite build`.
+3. Add it to the build, see [Vite](#vite) or [Next.js](#nextjs) below.
 
 4. Make sure the application's own `LICENSE` file is present when the build
    runs, because the notices start with the application's own license. In a
-   Docker build, copy it into the build stage:
+   Docker build, do not exclude it in `.dockerignore`, and if `.dockerignore`
+   lists the files to include instead, add `!LICENSE`. A Dockerfile that
+   copies the files it needs one by one has to name it as well:
 
    ```dockerfile
    COPY --chown=default:root index.html LICENSE vite.config.ts ./
    ```
 
-   and do not exclude it in `.dockerignore`. If `.dockerignore` lists the files
-   to include instead, add `!LICENSE`.
+   One that copies the whole build context, with `COPY . .`, needs nothing
+   more.
 
 5. Run `pnpm build` and read the output. The first build of an existing
    application usually needs a license decision or two; the build tells which.
@@ -95,10 +94,90 @@ the build with a message that says what to check. See
    });
    ```
 
+### Vite
+
+Add the plugin to `vite.config.ts`:
+
+```ts
+import { thirdPartyLicenses } from '@city-of-helsinki/license-notices';
+
+import { thirdPartyLicensesConfig } from './scripts/thirdPartyLicenses.config';
+
+export default defineConfig({
+  plugins: [
+    // ...
+    thirdPartyLicenses(thirdPartyLicensesConfig),
+  ],
+});
+```
+
+The plugin only runs in `vite build`, and emits both files into the build
+output.
+
+### Next.js
+
+Wrap the Next config with `withThirdPartyLicenses`, from the
+`@city-of-helsinki/license-notices/next` entry point, and enable production
+source maps, which the notices are read from:
+
+```js
+const {
+  withThirdPartyLicenses,
+} = require('@city-of-helsinki/license-notices/next');
+
+const {
+  thirdPartyLicensesConfig,
+} = require('./scripts/thirdPartyLicenses.config');
+
+module.exports = {
+  // ...
+  productionBrowserSourceMaps: true,
+};
+
+module.exports = withThirdPartyLicenses(
+  module.exports,
+  thirdPartyLicensesConfig
+);
+module.exports = withSentryConfig(module.exports, {
+  // ...
+});
+```
+
+- The notices are written during `next build`, after the client is compiled,
+  into the `public` directory. `next start` serves them from there, and so
+  does the server of an `output: 'standalone'` build, once `public` is copied
+  next to it as Next's deployment instructions say. Add both files to
+  `.gitignore`:
+
+  ```gitignore
+  /public/third-party-licenses.txt
+  /public/oss-licenses.json
+  ```
+
+- Apply `withThirdPartyLicenses` before other wrappers, such as
+  `withSentryConfig`, as above. Those may remove the source maps after
+  uploading them, and run any hook configured before them first. A line of
+  its own before an existing wrapper leaves that wrapper's options as they
+  are.
+- The notices of an earlier build are removed from `public` before new ones
+  are written, so a build that fails on a license leaves none behind for
+  `next start` to serve. A build that fails to compile stops before that, and
+  leaves `public` as it was. `next dev` neither writes nor removes them.
+- The entry point is an ES module, which a CommonJS `next.config.js` can
+  `require` on Node 22.12 and later.
+- `next start` loads the Next config too, so where the production image
+  installs only `dependencies`, add the package there rather than to
+  `devDependencies`.
+- Vite does not have to be installed in a Next app. Import the
+  `ThirdPartyLicensesConfig` type from
+  `@city-of-helsinki/license-notices/next` there, since the types of the main
+  entry point refer to Vite.
+
 ## What the notices contain
 
 - The license of the application itself, read from the `LICENSE`, `LICENCE`
-  or `COPYING` file at the Vite root, and a link to its source.
+  or `COPYING` file at the Vite root or in the Next project directory, and a
+  link to its source.
 - One entry per bundled package and version, sorted by name: its license, the
   license it declares when a decision replaced it, the reason for the
   decision, and the package's own license file.
@@ -114,6 +193,24 @@ the build with a message that says what to check. See
 
 The output has no timestamps and a stable order, so an unchanged dependency
 set produces a byte-identical file.
+
+## How the bundled packages are found
+
+- **Vite:** [rollup-license-plugin](https://github.com/codepunkt/rollup-license-plugin)
+  reports every package with rendered output in the bundle, so a package that
+  tree shaking removes entirely is left out.
+- **Next.js,** with Turbopack or webpack, and with the Pages or the App
+  Router: the source maps of the chunks in `.next/static`, which is everything
+  sent to a browser. A source counts only when the source map maps output to
+  it, so tree shaking is followed in the same way. Turbopack has no plugin API
+  that reports the modules of a chunk, and its chunks name modules by number
+  only, so the source maps are the one record of what a chunk contains.
+
+  Turbopack follows the source maps that packages ship, so a source can name
+  a file a package was built from, such as `@apollo/src/...`, instead of the
+  installed one. Such a file is given to the package that shipped it: the
+  package it is inside of, or in the pnpm virtual store, the package in the
+  same store directory. When neither tells, the build fails, see below.
 
 ## Configuration
 
@@ -171,12 +268,15 @@ scope later:
 
 ## When the build fails
 
-| Message                                                              | What to do                                                                                                                                                       |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `License "…" for <package> is not a valid SPDX expression!`          | Read the package's license file and add a license decision naming its SPDX identifier.                                                                           |
-| `<package> declares "…", but the license decision "…" applies only…` | The package's license changed, or a new package matched a scope pattern. Read its license, then update or add the decision.                                      |
-| `<package> is distributed under "…", and there are no notice rules…` | A GPL-3.0, LGPL, AGPL or EUPL license, which needs more than a notice. Elect another license with a decision if one is offered, or add notice rules for it here. |
-| `Distributed package "…" was not found in node_modules…`             | A package listed in `sassResolvedPackages` is not installed.                                                                                                     |
+| Message                                                              | What to do                                                                                                                                                         |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `License "…" for <package> is not a valid SPDX expression!`          | Read the package's license file and add a license decision naming its SPDX identifier.                                                                             |
+| `<package> declares "…", but the license decision "…" applies only…` | The package's license changed, or a new package matched a scope pattern. Read its license, then update or add the decision.                                        |
+| `<package> is distributed under "…", and there are no notice rules…` | A GPL-3.0, LGPL, AGPL or EUPL license, which needs more than a notice. Elect another license with a decision if one is offered, or add notice rules for it here.   |
+| `Distributed package "…" was not found in node_modules…`             | A package listed in `sassResolvedPackages` is not installed.                                                                                                       |
+| `…the Next config must enable productionBrowserSourceMaps.`          | Enable `productionBrowserSourceMaps` in the Next config. The source maps are then served along with the chunks.                                                    |
+| `No chunk in … names a source map…`                                  | Something removes the source maps before the notices are written. Put `withThirdPartyLicenses` inside the wrapper that does.                                       |
+| `The source maps of the client build name files in node_modules…`    | A package ships source maps naming files outside of it, outside the pnpm virtual store. Set `experimental.turbopackInputSourceMaps` to `false` in the Next config. |
 
 ## Supported licenses
 
@@ -196,10 +296,17 @@ is still worthwhile.
 
 ## Limitations
 
-- **Vite 7 and 8 only.** Next.js, webpack and Turbopack builds are not
-  supported.
+- **Vite 7 and 8, and Next.js 16** with Turbopack or webpack. Other bundlers
+  and frameworks are not supported.
 - **npm packages in the bundle only.** Images, fonts and scripts loaded from a
   CDN are not covered, and belong in the application's own documentation.
+- **Client code only.** Code that runs only on the server, such as the server
+  bundles of a Next app and the `node_modules` of its standalone build, is not
+  sent to browsers, and its notices are not part of this file. This holds
+  while the server image is deployed and not handed to anyone else.
+- **Bundled packages appear as the package that bundles them.** A package
+  that bundles another one into its own files, such as Next with the copy of
+  React the App Router runs, is listed with its own license file only.
 - Packages with a license decision are looked up at the top of `node_modules`
   and in the pnpm virtual store.
 - This plugin produces notices. It does not replace a review of whether a

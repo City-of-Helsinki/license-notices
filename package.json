@@ -1,9 +1,10 @@
 {
   "name": "@city-of-helsinki/license-notices",
   "version": "0.1.0",
-  "description": "Third-party license notices for the production build of a Vite application",
+  "description": "Third-party license notices for the production build of a Vite or Next.js application",
   "keywords": [
     "vite-plugin",
+    "nextjs",
     "license",
     "third-party-notices",
     "open-source-compliance"
@@ -20,6 +21,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./next": {
+      "types": "./dist/next.d.ts",
+      "default": "./dist/next.js"
     }
   },
   "files": [
@@ -48,7 +53,16 @@
     "spdx-expression-parse": "^5.0.0"
   },
   "peerDependencies": {
+    "next": "^16",
     "vite": "^7 || ^8"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    },
+    "vite": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@commitlint/cli": "^21.2.3",
@@ -59,7 +73,10 @@
     "@vitest/coverage-v8": "4.1.11",
     "eslint": "^10.11.0",
     "husky": "^9.1.7",
+    "next": "^16.4.0",
     "prettier": "^3.9.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "typescript": "^5.9",
     "typescript-eslint": "^8.70.0",
     "vite": "^8.0.16",
