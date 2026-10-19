@@ -104,6 +104,9 @@ the build with a message that says what to check. See
   decision, and the package's own license file.
 - For a package that ships no license file, a notice rebuilt from the canonical
   text of the license it declares and the author it names, marked as rebuilt.
+  A package declaring licenses joined with `AND`, such as `(OFL-1.1 AND MIT)`,
+  gets the text of each one, labelled with its identifier. Licenses offered as
+  a choice with `OR` are not rebuilt until a license decision elects one.
 - For MPL-2.0 components, the section 3.2 notice of where their source is.
 - For GPL-2.0 components, the section 3 notice of where their source and the
   source of the rest of the application are, and the full text of the GPL once
@@ -179,8 +182,8 @@ scope later:
 
 - **Notices from the package's own license file:** any license with a valid
   SPDX identifier.
-- **Rebuilt notices** for packages that ship no license file: MIT, ISC and
-  Apache-2.0.
+- **Rebuilt notices** for packages that ship no license file: MIT, ISC,
+  Apache-2.0 and OFL-1.1, and `AND` combinations of them.
 - **Extra notice rules:** MPL-2.0 and GPL-2.0 (`GPL-2.0-only`,
   `GPL-2.0-or-later`).
 - **Fail the build:** GPL-3.0, LGPL, AGPL and EUPL, in any form, until notice
@@ -243,7 +246,14 @@ the GPL appendix:
 | `MIT.txt`        | [SPDX License List](https://github.com/spdx/license-list-data), with the copyright line as a `{{copyright}}` placeholder |
 | `ISC.txt`        | [SPDX License List](https://github.com/spdx/license-list-data), with the copyright line as a `{{copyright}}` placeholder |
 | `Apache-2.0.txt` | <https://www.apache.org/licenses/LICENSE-2.0.txt>, verbatim                                                              |
+| `OFL-1.1.txt`    | <https://openfontlicense.org/documents/OFL.txt>, verbatim from the title to the end, without the template header         |
 | `GPL-2.0.txt`    | <https://www.gnu.org/licenses/old-licenses/gpl-2.0.txt>, verbatim                                                        |
+
+The official OFL-1.1 text starts with a header for font authors to fill in,
+with their copyright and Reserved Font Names, before the license itself. It is
+left out, and a rebuilt OFL-1.1 notice states the author above the license
+instead, as for Apache-2.0. A Reserved Font Name is never stated: a
+package.json cannot name one, and the notices never invent it.
 
 ## License
 

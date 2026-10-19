@@ -6,6 +6,7 @@ import {
   createViteLicensePlugin,
   type LicenseMeta,
 } from 'rollup-license-plugin';
+import parseSpdx from 'spdx-expression-parse';
 import type { Plugin } from 'vite';
 
 /**
@@ -91,8 +92,8 @@ export type ResolvedPackage = {
   source: string;
   licenseText?: string;
   /**
-   * Whether the license text was rebuilt from the canonical text of the
-   * declared license, because the package ships no license file.
+   * Whether the license text was rebuilt from the canonical texts of the
+   * declared licenses, because the package ships no license file.
    */
   licenseTextReconstructed: boolean;
 };
@@ -164,15 +165,78 @@ function readCanonicalText(license: string): string | undefined {
   return canonicalTextCache.get(license);
 }
 
+type LicenseTerms = {
+  /** The licenses the expression names, in its order, without repeats. */
+  parts: string[];
+  /** Whether it offers a choice between them, with OR. */
+  choice: boolean;
+};
+
+/**
+ * The licenses a license expression names, or undefined when it is not a
+ * valid SPDX expression. A license with an exception or a "+" stays one
+ * part, so that it never matches the canonical text of the bare license.
+ */
+function parseLicenseTerms(license: string): LicenseTerms | undefined {
+  let expression: parseSpdx.Info;
+  try {
+    expression = parseSpdx(license);
+  } catch {
+    return undefined;
+  }
+
+  const terms: LicenseTerms = { parts: [], choice: false };
+  const collect = (node: parseSpdx.Info): void => {
+    if ('conjunction' in node) {
+      terms.choice ||= node.conjunction === 'or';
+      collect(node.left);
+      collect(node.right);
+      return;
+    }
+    const part =
+      node.license +
+      (node.plus ? '+' : '') +
+      (node.exception ? ` WITH ${node.exception}` : '');
+    if (!terms.parts.includes(part)) {
+      terms.parts.push(part);
+    }
+  };
+  collect(expression);
+  return terms;
+}
+
 /**
  * Rebuilds the notice of a package that ships no license file, from the
- * license it declares and the author it names. Returns undefined when no
- * canonical text is available for that license.
+ * license it declares and the author it names. An expression joining
+ * licenses with AND gets the text of each one, since all of them apply.
+ * Returns undefined when the expression offers a choice, which is a license
+ * decision to make, or when any of its licenses has no canonical text.
  */
 export function reconstructLicenseText(
   license: string,
   author?: string
 ): string | undefined {
+  const terms = parseLicenseTerms(license);
+  if (!terms || terms.choice) {
+    return undefined;
+  }
+  const texts = terms.parts.map((part) => reconstructOne(part, author));
+  if (!texts.every((text): text is string => text !== undefined)) {
+    return undefined;
+  }
+  if (texts.length === 1) {
+    return texts[0];
+  }
+  return texts
+    .map(
+      (text, i) =>
+        `License text ${i + 1} of ${texts.length}: ${terms.parts[i]}\n\n` +
+        text.trimEnd()
+    )
+    .join('\n\n');
+}
+
+function reconstructOne(license: string, author?: string): string | undefined {
   const canonical = readCanonicalText(license);
   if (!canonical) {
     return undefined;
@@ -425,11 +489,7 @@ export function resolvePackage(
 
   const reconstructed = reconstructLicenseText(license, author);
   if (!reconstructed) {
-    warnOnce(
-      id,
-      `${id} ships no license file and no canonical text for "${license}" ` +
-        'is available, so only the license it declares can be stated.'
-    );
+    warnOnce(id, `${id} ships no license file and ${whyNotRebuilt(license)}`);
     return resolved;
   }
   if (!author) {
@@ -443,6 +503,25 @@ export function resolvePackage(
   resolved.licenseText = reconstructed.trimEnd();
   resolved.licenseTextReconstructed = true;
   return resolved;
+}
+
+/** Why the notice of a package shipping no license file was not rebuilt. */
+function whyNotRebuilt(license: string): string {
+  const terms = parseLicenseTerms(license);
+  if (terms?.choice) {
+    return (
+      `declares a choice between licenses, "${license}", so only that ` +
+      'choice can be stated. A license decision electing one of them gives ' +
+      'it a rebuilt notice.'
+    );
+  }
+  const missing = terms?.parts.filter((part) => !readCanonicalText(part)) ?? [
+    license,
+  ];
+  return (
+    `no canonical text for "${missing.join('", "')}" is available, so only ` +
+    'the license it declares can be stated.'
+  );
 }
 
 /**
@@ -547,14 +626,24 @@ function renderEntry(
       )
     );
   } else if (pkg.licenseTextReconstructed) {
+    const combined = (parseLicenseTerms(pkg.license)?.parts.length ?? 0) > 1;
     lines.push(
       wrapText(
         'This package ships no license file. The notice below was ' +
-          `reconstructed from the ${pkg.license} license it declares in its ` +
+          'reconstructed from ' +
+          (combined
+            ? `the canonical text of each license in the ${pkg.license} ` +
+              'expression'
+            : `the ${pkg.license} license`) +
+          ' it declares in its ' +
           (pkg.author
             ? 'package.json and the author it names there.'
             : 'package.json. It names no author, so no copyright holder is ' +
-              'stated.')
+              'stated.') +
+          (combined
+            ? ' Its package.json does not say which part of the package ' +
+              'each license covers.'
+            : '')
       ),
       '',
       pkg.licenseText

@@ -44,7 +44,8 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "rollup-license-plugin": "^3.2.1"
+    "rollup-license-plugin": "^3.2.1",
+    "spdx-expression-parse": "^5.0.0"
   },
   "peerDependencies": {
     "vite": "^7 || ^8"
@@ -54,6 +55,7 @@
     "@commitlint/config-conventional": "^21.2.3",
     "@eslint/js": "^10.0.1",
     "@types/node": "^22",
+    "@types/spdx-expression-parse": "^4.0.0",
     "@vitest/coverage-v8": "4.1.11",
     "eslint": "^10.11.0",
     "husky": "^9.1.7",

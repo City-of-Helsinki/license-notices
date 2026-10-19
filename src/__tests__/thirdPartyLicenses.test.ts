@@ -1,3 +1,8 @@
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import type { LicenseMeta } from 'rollup-license-plugin';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -114,6 +119,104 @@ describe('reconstructLicenseText', () => {
 
   it('refuses an identifier that is not a plain SPDX id', () => {
     expect(reconstructLicenseText('../../etc/passwd')).toBeUndefined();
+    expect(
+      reconstructLicenseText('(MIT AND ../../etc/passwd)')
+    ).toBeUndefined();
+  });
+
+  it('puts the author above the OFL-1.1 text, which has no copyright line', () => {
+    const text = reconstructLicenseText('OFL-1.1', 'Dave Gandy');
+
+    expect(text?.split('\n').slice(0, 4)).toEqual([
+      'Copyright (c) Dave Gandy',
+      '',
+      '-'.repeat(59),
+      'SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007',
+    ]);
+    // Neither the template header nor a Reserved Font Name is carried.
+    expect(text).not.toContain('with Reserved Font Name');
+    expect(text).not.toContain('This Font Software is licensed under');
+  });
+
+  it('gives the OFL-1.1 text alone when no author is known', () => {
+    const text = reconstructLicenseText('OFL-1.1');
+
+    expect(text?.startsWith(`${'-'.repeat(59)}\nSIL OPEN FONT LICENSE`)).toBe(
+      true
+    );
+    expect(text).not.toContain('Copyright (c)');
+  });
+
+  it('gives each license of an AND expression its own labelled text', () => {
+    const text = reconstructLicenseText('(OFL-1.1 AND MIT)', 'Dave Gandy');
+
+    expect(text?.startsWith('License text 1 of 2: OFL-1.1\n\n')).toBe(true);
+    expect(text).toContain(
+      'License text 2 of 2: MIT\n\nMIT License\n\nCopyright (c) Dave Gandy'
+    );
+    // Both full texts, OFL-1.1 first, as the expression names them.
+    expect(text?.indexOf('SIL OPEN FONT LICENSE Version 1.1')).toBeLessThan(
+      text?.indexOf('Permission is hereby granted, free of charge') ?? -1
+    );
+    expect(text).toContain('OTHER DEALINGS IN THE FONT SOFTWARE.');
+    expect(text).not.toContain('{{copyright}}');
+  });
+
+  it('flattens a longer AND chain in the order of the expression', () => {
+    const text = reconstructLicenseText('MIT AND (ISC AND Apache-2.0)');
+
+    expect(text?.match(/^License text .*$/gm)).toEqual([
+      'License text 1 of 3: MIT',
+      'License text 2 of 3: ISC',
+      'License text 3 of 3: Apache-2.0',
+    ]);
+  });
+
+  it('does not pick a license out of an OR expression', () => {
+    expect(reconstructLicenseText('(MIT OR Apache-2.0)')).toBeUndefined();
+    expect(
+      reconstructLicenseText('MIT AND (ISC OR Apache-2.0)')
+    ).toBeUndefined();
+  });
+
+  it('rebuilds nothing when one license of an AND has no canonical text', () => {
+    expect(reconstructLicenseText('(OFL-1.1 AND MPL-2.0)')).toBeUndefined();
+  });
+
+  it('does not take a license with an exception for the bare license', () => {
+    expect(
+      reconstructLicenseText('Apache-2.0 WITH LLVM-exception')
+    ).toBeUndefined();
+  });
+});
+
+describe('the OFL-1.1 text', () => {
+  const file = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../../licenseTexts/OFL-1.1.txt'
+  );
+
+  // The official text is https://openfontlicense.org/documents/OFL.txt, as
+  // fetched on 2026-10-19 (Last-Modified 2026-01-12). The file keeps it from
+  // the rule line above "SIL OPEN FONT LICENSE Version 1.1" to the end, byte
+  // for byte, leaving out only the template header for font authors. The OFL
+  // is to be reproduced unmodified, so any edit or re-wrap must fail here.
+  it('is the body of the official text, byte for byte', () => {
+    expect(
+      createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+    ).toBe('ebc109078c06f79af74cf2b27454c262830d12a65749f0e2bf25d1ac1db7a02a');
+  });
+
+  it('is carried into a rebuilt notice unchanged', () => {
+    const resolved = resolve({
+      license: 'OFL-1.1',
+      licenseText: undefined,
+      author: 'Dave Gandy',
+    });
+
+    expect(resolved.licenseText).toBe(
+      `Copyright (c) Dave Gandy\n\n${fs.readFileSync(file, 'utf8').trimEnd()}`
+    );
   });
 });
 
@@ -182,6 +285,56 @@ describe('resolvePackage', () => {
 
     expect(resolved.licenseTextReconstructed).toBe(true);
     expect(resolved.licenseText).toContain('Copyright (c) Jason Quense');
+  });
+
+  it('rebuilds the notice of a package declaring an AND expression', () => {
+    const resolved = resolve({
+      name: 'font-awesome',
+      version: '4.7.0',
+      license: '(OFL-1.1 AND MIT)',
+      licenseText: undefined,
+      author: { name: 'Dave Gandy', email: 'dave@fontawesome.io' },
+    });
+
+    expect(resolved.license).toBe('(OFL-1.1 AND MIT)');
+    expect(resolved.licenseTextReconstructed).toBe(true);
+    expect(resolved.licenseText).toContain('License text 1 of 2: OFL-1.1');
+    expect(resolved.licenseText).toContain('License text 2 of 2: MIT');
+  });
+
+  it('asks for a decision instead of rebuilding an OR expression', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const resolved = resolve({
+      name: 'either',
+      license: '(MIT OR Apache-2.0)',
+      licenseText: undefined,
+    });
+
+    expect(resolved.licenseText).toBeUndefined();
+    expect(resolved.licenseTextReconstructed).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'either@1.0.0 ships no license file and declares a choice between ' +
+          'licenses, "(MIT OR Apache-2.0)"'
+      )
+    );
+    warn.mockRestore();
+  });
+
+  it('names the license of an AND expression that has no text', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const resolved = resolve({
+      name: 'half-known',
+      license: '(OFL-1.1 AND MPL-2.0)',
+      licenseText: undefined,
+    });
+
+    expect(resolved.licenseText).toBeUndefined();
+    expect(resolved.licenseTextReconstructed).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('no canonical text for "MPL-2.0" is available')
+    );
+    warn.mockRestore();
   });
 
   it('leaves the text out when nothing can reconstruct it', () => {
@@ -477,6 +630,32 @@ describe('renderNotices', () => {
     expect(output).toContain('Permission is hereby granted, free of charge');
   });
 
+  it('marks a notice rebuilt from an AND expression as such', () => {
+    const packages = [
+      resolve({
+        name: 'font-awesome',
+        version: '4.7.0',
+        license: '(OFL-1.1 AND MIT)',
+        licenseText: undefined,
+        author: 'Dave Gandy',
+      }),
+    ];
+    const output = renderNotices(packages, config());
+    const unwrapped = output.replace(/\s+/g, ' ');
+
+    expect(unwrapped).toContain(
+      'reconstructed from the canonical text of each license in the ' +
+        '(OFL-1.1 AND MIT) expression it declares'
+    );
+    // The package.json cannot say which license covers what, so the notice
+    // must not claim to know.
+    expect(unwrapped).toContain(
+      'does not say which part of the package each license covers'
+    );
+    expect(output).toContain('License text 1 of 2: OFL-1.1');
+    expect(renderNotices(packages, config())).toBe(output);
+  });
+
   it('states the elected license and what the package declares', () => {
     const output = renderNotices(
       [
@@ -661,6 +840,18 @@ describe('renderManifest', () => {
     expect(reconstructed.licenseTextReconstructed).toBe(true);
     expect(reconstructed.licenseText).toContain('Copyright (c) Jane Doe');
     expect(shipped.licenseTextReconstructed).toBeUndefined();
+  });
+
+  it('flags a text rebuilt from an AND expression as reconstructed', () => {
+    const [entry] = JSON.parse(
+      renderManifest([
+        resolve({ license: '(OFL-1.1 AND MIT)', licenseText: undefined }),
+      ])
+    );
+
+    expect(entry.license).toBe('(OFL-1.1 AND MIT)');
+    expect(entry.licenseTextReconstructed).toBe(true);
+    expect(entry.licenseText).toContain('License text 2 of 2: MIT');
   });
 
   it('sorts entries and stays byte-identical between runs', () => {
