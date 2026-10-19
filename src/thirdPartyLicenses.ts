@@ -345,15 +345,16 @@ function warnOnce(key: string, message: string): void {
 /**
  * Applies the configured decisions to one package, so that the notices and
  * the manifest describe it identically. The license a decided package
- * declares comes from lookupDeclaredLicense, see findInstalledPackages.
+ * declares comes from lookupInstalled, see findInstalledPackages, which
+ * finds nothing when the package.json of the package was not found.
  */
 export function resolvePackage(
   pkg: LicenseMeta,
   config: ThirdPartyLicensesConfig,
-  lookupDeclaredLicense: (
+  lookupInstalled: (
     name: string,
     version: string
-  ) => string | undefined = () => undefined
+  ) => Pick<InstalledPackage, 'declaredLicense'> | undefined = () => undefined
 ): ResolvedPackage {
   const [decisionKey, decision] =
     findDecision(pkg.name, config.licenseDecisions) ?? [];
@@ -361,28 +362,37 @@ export function resolvePackage(
   const author = formatAuthor(pkg.author);
   const id = `${pkg.name}@${pkg.version}`;
 
-  const declaredLicense = decision
-    ? lookupDeclaredLicense(pkg.name, pkg.version)
+  const installed = decision
+    ? lookupInstalled(pkg.name, pkg.version)
     : undefined;
+  const declaredLicense = installed?.declaredLicense;
   if (
     decision?.declared !== undefined &&
     declaredLicense !== decision.declared
   ) {
+    let declares = `declares "${declaredLicense}"`;
+    if (!installed) {
+      declares = 'has a package.json that could not be found';
+    } else if (declaredLicense === undefined) {
+      declares = 'declares no license';
+    }
     throw new Error(
-      `${id} declares ` +
-        (declaredLicense === undefined
-          ? 'a license that could not be read'
-          : `"${declaredLicense}"`) +
-        `, but the license decision "${decisionKey}" applies only to ` +
-        `packages declaring "${decision.declared}". Read the license of ` +
-        `${id} and update the decisions.`
+      `${id} ${declares}, but the license decision "${decisionKey}" ` +
+        `applies only to packages declaring "${decision.declared}". Read ` +
+        `the license of ${id} and update the decisions.`
     );
   }
-  if (decision && declaredLicense === undefined) {
+  if (decision && !installed) {
     warnOnce(
       `${id}:declared`,
       `the package.json of ${id} was not found, so the notices state the ` +
         'license decided for it but not the one it declares.'
+    );
+  } else if (decision && declaredLicense === undefined) {
+    warnOnce(
+      `${id}:declared`,
+      `the package.json of ${id} declares no license, so the notices ` +
+        'state only the license decided for it.'
     );
   }
   if (COPYLEFT_LICENSE.test(license) && !isGpl2(license)) {
@@ -649,12 +659,12 @@ export function thirdPartyLicenses(config: ThirdPartyLicensesConfig): Plugin {
   let root = process.cwd();
   // Both are filled in at the start of each build, see buildStart below.
   const licenseOverrides: Record<string, string> = {};
-  let declaredLicenses = new Map<string, string | undefined>();
+  let installedPackages = new Map<string, InstalledPackage>();
 
   const resolveAll = (packages: LicenseMeta[]) =>
     packages.map((pkg) =>
       resolvePackage(pkg, config, (name, version) =>
-        declaredLicenses.get(`${name}@${version}`)
+        installedPackages.get(`${name}@${version}`)
       )
     );
 
@@ -706,11 +716,8 @@ export function thirdPartyLicenses(config: ThirdPartyLicensesConfig): Plugin {
         root,
         (name) => findDecision(name, decisions) !== undefined
       );
-      declaredLicenses = new Map(
-        installed.map((pkg) => [
-          `${pkg.name}@${pkg.version}`,
-          pkg.declaredLicense,
-        ])
+      installedPackages = new Map(
+        installed.map((pkg) => [`${pkg.name}@${pkg.version}`, pkg])
       );
 
       for (const name of Object.keys(licenseOverrides)) {

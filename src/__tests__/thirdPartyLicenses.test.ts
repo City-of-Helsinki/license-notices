@@ -49,7 +49,7 @@ const resolve = (
     resolvedConfig,
     (name, version) =>
       name === declared.name && version === declared.version
-        ? declared.license
+        ? { declaredLicense: declared.license }
         : undefined
   );
 };
@@ -153,6 +153,26 @@ describe('resolvePackage', () => {
     warn.mockRestore();
   });
 
+  it('tells a package.json without a license from a missing one', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const resolved = resolvePackage(
+      pkg({ name: 'dompurify', version: '9.9.8', license: 'Apache-2.0' }),
+      config(dompurifyDecision),
+      () => ({ declaredLicense: undefined })
+    );
+
+    expect(resolved.declaredLicense).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'package.json of dompurify@9.9.8 declares no license'
+      )
+    );
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('was not found')
+    );
+    warn.mockRestore();
+  });
+
   it('reconstructs the text of a package shipping no license file', () => {
     const resolved = resolve({
       name: 'tiny-case',
@@ -235,14 +255,30 @@ describe('the license decision guard', () => {
     );
   });
 
-  it('fails when the declared license cannot be read', () => {
+  it('fails when the package.json of the package is not found', () => {
     expect(() =>
       resolvePackage(
         pkg({ name: '@vendor/core', license: 'GPL-2.0-or-later' }),
         config(guarded),
         () => undefined
       )
-    ).toThrow('declares a license that could not be read');
+    ).toThrow(
+      '@vendor/core@1.0.0 has a package.json that could not be found, but ' +
+        'the license decision "@vendor/*" applies only'
+    );
+  });
+
+  it('fails when the package.json declares no license', () => {
+    expect(() =>
+      resolvePackage(
+        pkg({ name: '@vendor/core', license: 'GPL-2.0-or-later' }),
+        config(guarded),
+        () => ({ declaredLicense: undefined })
+      )
+    ).toThrow(
+      '@vendor/core@1.0.0 declares no license, but the license decision ' +
+        '"@vendor/*" applies only'
+    );
   });
 
   it('refuses a pattern without the guard', () => {
