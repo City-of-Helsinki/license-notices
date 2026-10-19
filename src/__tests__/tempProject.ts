@@ -6,15 +6,18 @@ export type TempProject = { root: string; remove: () => void };
 
 /**
  * Writes the given files, keyed by path relative to the project root, into a
- * fresh temporary directory. Objects are written as JSON.
+ * fresh temporary directory, in the system one unless another parent is
+ * given. Objects are written as JSON.
  */
 export function createTempProject(
-  files: Record<string, string | object>
+  files: Record<string, string | object>,
+  parentDir = os.tmpdir()
 ): TempProject {
+  fs.mkdirSync(parentDir, { recursive: true });
   // Resolved, because the bundler reports module paths through symlinks such
   // as the /var -> /private/var of macOS.
   const root = fs.realpathSync(
-    fs.mkdtempSync(path.join(os.tmpdir(), 'license-notices-'))
+    fs.mkdtempSync(path.join(parentDir, 'license-notices-'))
   );
   for (const [file, content] of Object.entries(files)) {
     const target = path.join(root, file);
