@@ -10,6 +10,7 @@ import {
 } from 'rollup-license-plugin';
 
 import {
+  compareCodeUnits,
   DEFAULT_MANIFEST_FILE_NAME,
   DEFAULT_NOTICES_FILE_NAME,
   findDecision,
@@ -89,7 +90,7 @@ export function findClientPackageDirs(
         'to false makes the source maps name the installed files instead.'
     );
   }
-  return [...dirs].sort();
+  return [...dirs].sort(compareCodeUnits);
 }
 
 /**

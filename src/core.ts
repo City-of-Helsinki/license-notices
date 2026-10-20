@@ -35,6 +35,21 @@ const COPYRIGHT_PLACEHOLDER = '{{copyright}}';
 const SEPARATOR = '-'.repeat(78);
 const WRAP_COLUMNS = 78;
 
+/**
+ * Orders strings by their UTF-16 code units, as the default sort does. Used
+ * where the order only has to be stable, since an order by locale would
+ * depend on the machine the build runs on.
+ */
+export function compareCodeUnits(a: string, b: string): number {
+  if (a < b) {
+    return -1;
+  }
+  if (a > b) {
+    return 1;
+  }
+  return 0;
+}
+
 /** A license identifier that replaces the one a package declares. */
 export type LicenseDecision = {
   license: string;
@@ -722,7 +737,7 @@ export function readProjectLicenseText(root: string): string | undefined {
   const fileName = fs
     .readdirSync(root)
     .filter((name) => /^(licen[cs]e|copying)([.-].*)?$/i.test(name))
-    .sort()[0];
+    .sort(compareCodeUnits)[0];
   if (!fileName) {
     warnOnce(
       'project-license',

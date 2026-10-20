@@ -7,6 +7,7 @@ import type { LicenseMeta } from 'rollup-license-plugin';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  compareCodeUnits,
   formatAuthor,
   findDecision,
   findInstalledPackages,
@@ -563,6 +564,21 @@ describe('findInstalledPackages', () => {
       'legacy-object': 'BSD',
       'legacy-array': 'MIT OR GPL-2.0',
     });
+  });
+});
+
+describe('compareCodeUnits', () => {
+  it('orders the same way on every machine, whatever its locale', () => {
+    // By code unit, as the default sort does: upper case before lower case,
+    // and letters outside ASCII last. An order by locale would interleave
+    // them differently depending on where the build runs.
+    expect(['b', 'ä', 'a', 'B'].sort(compareCodeUnits)).toEqual([
+      'B',
+      'a',
+      'b',
+      'ä',
+    ]);
+    expect(compareCodeUnits('x', 'x')).toBe(0);
   });
 });
 

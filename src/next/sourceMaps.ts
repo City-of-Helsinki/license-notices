@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { compareCodeUnits } from '../core.js';
+
 /**
  * Reads which source files have output in a client build, from the source
  * maps next to its chunks. Turbopack has no plugin API that reports the
@@ -138,7 +140,7 @@ export function readClientSources(staticDir: string): ClientSources {
   let mappedChunks = 0;
   const chunks = listFiles(staticDir)
     .filter((file) => /\.(js|css)$/.test(file))
-    .sort();
+    .sort(compareCodeUnits);
   for (const chunk of chunks) {
     const url = findSourceMapUrl(fs.readFileSync(chunk, 'utf8'));
     if (url === undefined) {
@@ -149,5 +151,5 @@ export function readClientSources(staticDir: string): ClientSources {
       sources.add(source);
     }
   }
-  return { sources: [...sources].sort(), mappedChunks };
+  return { sources: [...sources].sort(compareCodeUnits), mappedChunks };
 }
