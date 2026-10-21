@@ -18,7 +18,7 @@ const NODE_MODULES = 'node_modules';
 /** The path of a source, without the scheme of the bundler that named it. */
 export function sourcePathOf(source: string): string {
   if (source.startsWith('file://')) {
-    return fileURLToPath(source);
+    return fileURLToPath(source).replaceAll('\\', '/');
   }
   return source
     .replaceAll('\\', '/')
