@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 import {
   ancestorsOf,
@@ -22,6 +22,17 @@ import {
 import { createTempProject, type TempProject } from './tempProject.js';
 
 const packageJson = (name: string) => ({ name, version: '1.0.0' });
+
+// Converts file URLs the way Node does on Windows while set.
+const platform = vi.hoisted(() => ({ windows: false }));
+vi.mock('node:url', async (importOriginal) => {
+  const url = await importOriginal<typeof import('node:url')>();
+  return {
+    ...url,
+    fileURLToPath: (source: string | URL) =>
+      url.fileURLToPath(source, { windows: platform.windows }),
+  };
+});
 
 describe('findMappedSourceIndices', () => {
   it('finds the sources that segments map output to', () => {
@@ -75,6 +86,16 @@ describe('findMappedSources', () => {
       })
     ).toEqual(['webpack://app/a.js']);
   });
+
+  it('separates a source root without a trailing slash from each source', () => {
+    expect(
+      findMappedSources({
+        sourceRoot: 'webpack://app/node_modules',
+        sources: ['a/i.js'],
+        mappings: 'AAAA',
+      })
+    ).toEqual(['webpack://app/node_modules/a/i.js']);
+  });
 });
 
 describe('findSourceMapUrl', () => {
@@ -110,6 +131,18 @@ describe('sourcePathOf', () => {
     expect(sourcePathOf('file:///app/node_modules/a/i.js')).toBe(
       '/app/node_modules/a/i.js'
     );
+  });
+
+  it('separates the path of a Windows file URL with slashes', () => {
+    platform.windows = true;
+    onTestFinished(() => {
+      platform.windows = false;
+    });
+
+    expect(sourcePathOf('file:///C:/app/node_modules/a/i.js')).toBe(
+      'C:/app/node_modules/a/i.js'
+    );
+    expect(isDependencySource('file:///C:/app/node_modules/a/i.js')).toBe(true);
   });
 
   it('tells dependency sources from the sources of the app', () => {
@@ -307,6 +340,23 @@ describe('writeThirdPartyLicenses', () => {
         'utf8'
       )
     ).toContain('a@1.0.0\nLicense: MIT\n');
+  });
+
+  it('writes files named in a subdirectory of the public directory', async () => {
+    project = build('MIT');
+
+    await writeThirdPartyLicenses({
+      projectDir: project.root,
+      distDir: '.next',
+      config: {
+        repositoryUrl: 'https://example.com/app',
+        noticesFileName: 'legal/third-party-licenses.txt',
+        manifestFileName: 'legal/data/oss-licenses.json',
+      },
+    });
+
+    expect(exists('legal/third-party-licenses.txt')).toBe(true);
+    expect(exists('legal/data/oss-licenses.json')).toBe(true);
   });
 
   it('leaves no files of an earlier build behind when it fails', async () => {

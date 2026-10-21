@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { LicenseMeta } from 'rollup-license-plugin';
 import parseSpdx from 'spdx-expression-parse';
 
 /**
@@ -89,6 +88,21 @@ export type ThirdPartyLicensesConfig = {
   manifestFileName?: string | false;
 };
 
+/**
+ * One bundled package, as rollup-license-plugin describes it. Declared here
+ * instead of imported, since the types of rollup-license-plugin import those
+ * of Vite and Rollup, which an application built with Next need not have.
+ */
+export type BundledPackage = {
+  name: string;
+  version: string;
+  author?: string | { name: string; email?: string; url?: string };
+  license: string;
+  licenseText: string;
+  repository: string;
+  source: string;
+};
+
 /** One bundled package, after the configured decisions have been applied. */
 export type ResolvedPackage = {
   name: string;
@@ -137,7 +151,7 @@ export function wrapText(text: string, columns = WRAP_COLUMNS): string {
 
 /** The author of a package, as a plain "Name <email>" string. */
 export function formatAuthor(
-  author: LicenseMeta['author']
+  author: BundledPackage['author']
 ): string | undefined {
   if (typeof author === 'string') {
     return author.trim() || undefined;
@@ -428,7 +442,7 @@ function warnOnce(key: string, message: string): void {
  * finds nothing when the package.json of the package was not found.
  */
 export function resolvePackage(
-  pkg: LicenseMeta,
+  pkg: BundledPackage,
   config: ThirdPartyLicensesConfig,
   lookupInstalled: (
     name: string,

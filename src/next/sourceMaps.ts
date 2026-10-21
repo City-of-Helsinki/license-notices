@@ -69,6 +69,16 @@ export function findMappedSourceIndices(mappings: string): Set<number> {
   return mapped;
 }
 
+/**
+ * A source with the source root of its map in front, separated by a slash
+ * whether or not the root ends with one, as ECMA-426 says.
+ */
+function joinSourceRoot(sourceRoot: string, source: string): string {
+  return sourceRoot.endsWith('/')
+    ? `${sourceRoot}${source}`
+    : `${sourceRoot}/${source}`;
+}
+
 /** The sources of a source map that have output, indexed maps included. */
 export function findMappedSources(map: SourceMap): string[] {
   if (map.sections) {
@@ -79,7 +89,7 @@ export function findMappedSources(map: SourceMap): string[] {
     if (source === null || !mapped.has(i)) {
       return [];
     }
-    return [map.sourceRoot ? `${map.sourceRoot}${source}` : source];
+    return [map.sourceRoot ? joinSourceRoot(map.sourceRoot, source) : source];
   });
 }
 

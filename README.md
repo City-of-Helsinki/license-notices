@@ -154,6 +154,10 @@ module.exports = withSentryConfig(module.exports, {
   /public/oss-licenses.json
   ```
 
+  Each build replaces the files it writes, but leaves a file it no longer
+  writes in place, after `manifestFileName` is set to `false` or a file name
+  is changed. Remove such a file by hand.
+
 - Apply `withThirdPartyLicenses` before other wrappers, such as
   `withSentryConfig`, as above. Those may remove the source maps after
   uploading them, and run any hook configured before them first. A line of

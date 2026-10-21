@@ -187,12 +187,16 @@ export async function writeThirdPartyLicenses({
     )
   );
 
-  fs.mkdirSync(publicDir, { recursive: true });
-  fs.writeFileSync(
+  // A configured file name can name a subdirectory of the public directory.
+  const write = (file: string, content: string) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
+  };
+  write(
     noticesFile,
     renderNotices(resolved, config, readProjectLicenseText(projectDir))
   );
   if (manifestFile !== undefined) {
-    fs.writeFileSync(manifestFile, renderManifest(resolved));
+    write(manifestFile, renderManifest(resolved));
   }
 }
