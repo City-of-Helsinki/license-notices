@@ -2,7 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createRsbuild } from '@rsbuild/core';
+import {
+  createRsbuild,
+  mergeRsbuildConfig,
+  type RsbuildConfig,
+} from '@rsbuild/core';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { ThirdPartyLicensesConfig } from '../core.js';
@@ -40,6 +44,7 @@ const dependency = (
 
 // The constant of "used" is inlined where it is used, the function of
 // "hoisted" concatenated into the module of the entry, and "unused" left out.
+// The private field needs a helper of @swc/helpers in an old browser.
 const fixture = (usedLicense = 'MIT') => ({
   'package.json': { name: 'fixture', private: true },
   LICENSE: 'MIT License\n\nCopyright (c) Fixture App\n',
@@ -48,7 +53,17 @@ import 'styled/index.css';
 import { used } from 'used';
 import { hoisted } from 'hoisted';
 import { unused } from 'unused';
-document.body.textContent = used + hoisted();
+class Counter {
+  #count = 0;
+  next() {
+    return ++this.#count;
+  }
+}
+document.body.textContent = used + hoisted() + new Counter().next();
+`,
+  'src/worker.js': `
+import { workerOnly } from 'worker-only';
+self.postMessage(workerOnly());
 `,
   ...dependency(
     'used',
@@ -57,6 +72,9 @@ document.body.textContent = used + hoisted();
   ),
   ...dependency('hoisted', {
     'index.js': "export const hoisted = () => 'HOISTED';\n",
+  }),
+  ...dependency('worker-only', {
+    'index.js': "export const workerOnly = () => 'WORKER';\n",
   }),
   ...dependency('unused', {
     'index.js': "export const unused = 'UNUSED';\n",
@@ -72,23 +90,31 @@ describe('pluginThirdPartyLicenses', () => {
 
   afterEach(() => project.remove());
 
-  const build = async (
-    config: Partial<ThirdPartyLicensesConfig> = {},
-    usedLicense?: string
-  ) => {
+  const build = async ({
+    config = {},
+    usedLicense,
+    rsbuildConfig = {},
+  }: {
+    config?: Partial<ThirdPartyLicensesConfig>;
+    usedLicense?: string;
+    rsbuildConfig?: RsbuildConfig;
+  } = {}) => {
     project = createTempProject(fixture(usedLicense), FIXTURE_PARENT);
     const rsbuild = await createRsbuild({
       cwd: project.root,
-      rsbuildConfig: {
-        plugins: [
-          pluginThirdPartyLicenses({
-            repositoryUrl: 'https://example.com/app',
-            ...config,
-          }),
-        ],
-        output: { distPath: { root: 'build' } },
-        performance: { printFileSize: false },
-      },
+      rsbuildConfig: mergeRsbuildConfig(
+        {
+          plugins: [
+            pluginThirdPartyLicenses({
+              repositoryUrl: 'https://example.com/app',
+              ...config,
+            }),
+          ],
+          output: { distPath: { root: 'build' } },
+          performance: { printFileSize: false },
+        },
+        rsbuildConfig
+      ),
     });
     const { close } = await rsbuild.build();
     await close();
@@ -117,8 +143,10 @@ describe('pluginThirdPartyLicenses', () => {
     'honours the configured file names',
     async () => {
       await build({
-        noticesFileName: 'legal/notices.txt',
-        manifestFileName: false,
+        config: {
+          noticesFileName: 'legal/notices.txt',
+          manifestFileName: false,
+        },
       });
 
       expect(exists('legal/notices.txt')).toBe(true);
@@ -130,9 +158,43 @@ describe('pluginThirdPartyLicenses', () => {
   it(
     'fails the build on a package with an invalid license',
     async () => {
-      await expect(build({}, 'SEE LICENSE IN LICENSE.md')).rejects.toThrow(
-        'is not a valid SPDX expression'
-      );
+      await expect(
+        build({ usedLicense: 'SEE LICENSE IN LICENSE.md' })
+      ).rejects.toThrow('is not a valid SPDX expression');
+    },
+    BUILD_TIMEOUT
+  );
+
+  it(
+    'lists the helpers that Rsbuild injects into the build',
+    async () => {
+      await build({
+        rsbuildConfig: { output: { overrideBrowserslist: ['chrome 40'] } },
+      });
+
+      expect(read('third-party-licenses.txt')).toContain('@swc/helpers@');
+    },
+    BUILD_TIMEOUT
+  );
+
+  it(
+    'writes the packages of every browser environment in a dist root once',
+    async () => {
+      await build({
+        rsbuildConfig: {
+          environments: {
+            web: {},
+            worker: {
+              source: { entry: { worker: './src/worker.js' } },
+              output: { target: 'web-worker', distPath: { js: 'worker' } },
+            },
+          },
+        },
+      });
+
+      const notices = read('third-party-licenses.txt');
+      expect(notices).toContain('used@1.0.0\n');
+      expect(notices).toContain('worker-only@1.0.0\n');
     },
     BUILD_TIMEOUT
   );

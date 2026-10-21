@@ -7,7 +7,7 @@ import {
   findBundledModulePaths,
   findBundledPackageDirs,
 } from '../rsbuild/modules.js';
-import { webEnvironments } from '../rsbuild/pluginThirdPartyLicenses.js';
+import { browserOutputs } from '../rsbuild/pluginThirdPartyLicenses.js';
 import { createTempProject, type TempProject } from './tempProject.js';
 
 describe('findBundledModulePaths', () => {
@@ -159,23 +159,22 @@ describe('findBundledPackageDirs', () => {
   });
 });
 
-describe('webEnvironments', () => {
-  it('keeps only web environments, in index order', () => {
-    const web = {
-      index: 0,
-      distPath: '/d',
-      config: { output: { target: 'web' } },
-    };
+describe('browserOutputs', () => {
+  const environment = (index: number, target: string, distPath: string) => ({
+    index,
+    distPath,
+    config: { output: { target } },
+  });
 
-    expect(
-      webEnvironments({
-        ssr: {
-          index: 1,
-          distPath: '/d/s',
-          config: { output: { target: 'node' } },
-        },
-        web,
-      })
-    ).toEqual([web]);
+  it('groups the browser environments by their output directory', () => {
+    const web = environment(0, 'web', '/d');
+    const ssr = environment(1, 'node', '/d/server');
+    const worker = environment(2, 'web-worker', '/d');
+    const legacy = environment(3, 'web', '/legacy');
+
+    expect(browserOutputs({ worker, legacy, ssr, web })).toEqual([
+      { distPath: '/d', environments: [web, worker] },
+      { distPath: '/legacy', environments: [legacy] },
+    ]);
   });
 });
