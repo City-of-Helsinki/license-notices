@@ -2,8 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { compareCodeUnits } from './core.js';
+
 /**
- * Finds the installed package a source of a client source map belongs to.
+ * Finds the installed package a file of a build belongs to, named by a source
+ * of a client source map or by the path of a bundled module.
  *
  * The bundlers name sources differently: Turbopack as
  * "turbopack:///[project]/node_modules/...", relative to its root directory,
@@ -14,6 +17,8 @@ import { fileURLToPath } from 'node:url';
  */
 
 const NODE_MODULES = 'node_modules';
+/** Unresolved sources named in an error, before the rest are counted. */
+const MAX_LISTED_SOURCES = 10;
 
 /** The path of a source, without the scheme of the bundler that named it. */
 export function sourcePathOf(source: string): string {
@@ -147,4 +152,43 @@ export function findPackageDir(
     }
   }
   return undefined;
+}
+
+/**
+ * The directories of the installed packages that the dependency sources of
+ * a build belong to, each once. Fails, naming the sources, when any of them
+ * belongs to no package, since its license could not be found.
+ */
+export function resolvePackageDirs(
+  projectDir: string,
+  sources: string[],
+  origin: string,
+  hint = ''
+): string[] {
+  const baseDirs = ancestorsOf(projectDir);
+  const dirs = new Set<string>();
+  const unresolved: string[] = [];
+  for (const source of sources.filter(isDependencySource)) {
+    const dir = findPackageDir(source, baseDirs);
+    if (dir === undefined) {
+      unresolved.push(source);
+    } else {
+      dirs.add(fs.realpathSync(dir));
+    }
+  }
+  if (unresolved.length > 0) {
+    throw new Error(
+      `${origin} name files in node_modules that belong to no installed ` +
+        'package, so their licenses cannot be found:\n' +
+        unresolved
+          .slice(0, MAX_LISTED_SOURCES)
+          .map((source) => `  ${source}\n`)
+          .join('') +
+        (unresolved.length > MAX_LISTED_SOURCES
+          ? `  ...and ${unresolved.length - MAX_LISTED_SOURCES} more\n`
+          : '') +
+        hint
+    );
+  }
+  return [...dirs].sort(compareCodeUnits);
 }
