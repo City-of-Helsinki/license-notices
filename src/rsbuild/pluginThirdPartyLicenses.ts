@@ -11,19 +11,38 @@ export type EnvironmentContextLike = {
   config: { output: { target: string } };
 };
 
-/** The environments that build for the browser, in the order of their index. */
-export function webEnvironments<T extends EnvironmentContextLike>(
+/** The targets of Rsbuild whose output runs in a browser. */
+const BROWSER_TARGETS = new Set(['web', 'web-worker']);
+
+/**
+ * The environments that build for a browser, grouped by their output
+ * directory, which several of them can share, in the order of their index.
+ */
+export function browserOutputs<T extends EnvironmentContextLike>(
   environments: Record<string, T>
-): T[] {
-  return Object.values(environments)
-    .filter((environment) => environment.config.output.target === 'web')
-    .sort((a, b) => a.index - b.index);
+): { distPath: string; environments: T[] }[] {
+  const outputs = new Map<string, T[]>();
+  for (const environment of Object.values(environments).sort(
+    (a, b) => a.index - b.index
+  )) {
+    if (BROWSER_TARGETS.has(environment.config.output.target)) {
+      outputs.set(environment.distPath, [
+        ...(outputs.get(environment.distPath) ?? []),
+        environment,
+      ]);
+    }
+  }
+  return [...outputs].map(([distPath, grouped]) => ({
+    distPath,
+    environments: grouped,
+  }));
 }
 
 /**
  * Writes the third-party license notices of a production build into the
- * root of the output directory of each web environment, which Rsbuild
- * empties before each build and an application serves from its root.
+ * root of each output directory of the environments that build for a
+ * browser, which Rsbuild empties before each build and an application
+ * serves from its root.
  */
 export function pluginThirdPartyLicenses(
   config: ThirdPartyLicensesConfig
@@ -35,7 +54,7 @@ export function pluginThirdPartyLicenses(
         if (stats === undefined) {
           return;
         }
-        for (const environment of webEnvironments(environments)) {
+        const packageDirsOf = (environment: EnvironmentContextLike) => {
           const environmentStats =
             'stats' in stats ? stats.stats[environment.index] : stats;
           const { modules } = environmentStats.toJson({
@@ -46,13 +65,16 @@ export function pluginThirdPartyLicenses(
             ids: true,
             usedExports: true,
           });
+          return findBundledPackageDirs(
+            api.context.rootPath,
+            (modules ?? []) as StatsModuleLike[]
+          );
+        };
+        for (const output of browserOutputs(environments)) {
           await writeNotices({
             projectDir: api.context.rootPath,
-            outputDir: environment.distPath,
-            packageDirs: findBundledPackageDirs(
-              api.context.rootPath,
-              (modules ?? []) as StatsModuleLike[]
-            ),
+            outputDir: output.distPath,
+            packageDirs: output.environments.flatMap(packageDirsOf),
             config,
           });
         }
