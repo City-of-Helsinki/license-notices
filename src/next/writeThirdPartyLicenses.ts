@@ -2,45 +2,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
-  getLicense,
-  getLicenseText,
-  getRepository,
-  readPackageMeta,
-  type LicenseMeta,
-} from 'rollup-license-plugin';
-
-import {
   compareCodeUnits,
   DEFAULT_MANIFEST_FILE_NAME,
   DEFAULT_NOTICES_FILE_NAME,
-  findDecision,
-  findSassResolvedPackages,
-  readLicenseField,
-  readProjectLicenseText,
-  renderManifest,
-  renderNotices,
-  resolvePackage,
-  type InstalledPackage,
   type ThirdPartyLicensesConfig,
 } from '../core.js';
-import { ancestorsOf, findPackageDir, isDependencySource } from './packages.js';
+import { writeNotices } from '../packageNotices.js';
+import {
+  ancestorsOf,
+  findPackageDir,
+  isDependencySource,
+} from '../packages.js';
 import { readClientSources } from './sourceMaps.js';
 
 /** Unresolved sources named in an error, before the rest are counted. */
 const MAX_LISTED_SOURCES = 10;
-
-/**
- * The package tarball on the npm registry, as rollup-license-plugin names it
- * for a Vite build, so that both describe a package identically.
- */
-export function npmTarballUrl(name: string, version: string): string {
-  const scopeless = name.startsWith('@') ? name.split('/')[1] : name;
-  const plus = version.indexOf('+');
-  return (
-    `https://registry.npmjs.org/${name}/-/${scopeless}-` +
-    `${plus === -1 ? version : version.slice(0, plus)}.tgz`
-  );
-}
 
 /**
  * The directories of the packages with output in the client build, read
@@ -94,52 +70,6 @@ export function findClientPackageDirs(
 }
 
 /**
- * Reads the license of each package the way rollup-license-plugin does for
- * a Vite build, with the license of a decision in place of the declared one.
- */
-async function readPackages(
-  dirs: string[],
-  config: ThirdPartyLicensesConfig
-): Promise<{
-  packages: LicenseMeta[];
-  installed: Map<string, InstalledPackage>;
-}> {
-  const packages = new Map<string, LicenseMeta>();
-  const installed = new Map<string, InstalledPackage>();
-  for (const dir of dirs) {
-    const meta = await readPackageMeta(dir);
-    const id = `${meta.name}@${meta.version}`;
-    // The same version installed twice, for different peer dependencies in
-    // the pnpm virtual store, ships the same license.
-    if (packages.has(id)) {
-      continue;
-    }
-    const [, decision] = findDecision(meta.name, config.licenseDecisions) ?? [];
-    const license = getLicense(
-      id,
-      meta,
-      decision ? { licenseOverrides: { [meta.name]: decision.license } } : {}
-    );
-    const licenseText = await getLicenseText(id, license, dir);
-    packages.set(id, {
-      name: meta.name,
-      version: meta.version,
-      author: meta.author,
-      repository: getRepository(meta) ?? '',
-      source: npmTarballUrl(meta.name, meta.version),
-      license,
-      licenseText: licenseText ?? '',
-    });
-    installed.set(id, {
-      name: meta.name,
-      version: meta.version,
-      declaredLicense: readLicenseField(meta),
-    });
-  }
-  return { packages: [...packages.values()], installed };
-}
-
-/**
  * Writes the notices, and the manifest unless it is disabled, into the
  * public directory of a Next project, which both "next start" and the
  * server of a standalone build serve from the root of the application.
@@ -171,32 +101,13 @@ export async function writeThirdPartyLicenses({
     }
   }
 
-  const dirs = [
-    ...findClientPackageDirs(projectDir, path.resolve(projectDir, distDir)),
-    ...findSassResolvedPackages(projectDir, config.sassResolvedPackages).map(
-      (dir) => fs.realpathSync(dir)
+  await writeNotices({
+    projectDir,
+    outputDir: publicDir,
+    packageDirs: findClientPackageDirs(
+      projectDir,
+      path.resolve(projectDir, distDir)
     ),
-  ];
-  const { packages, installed } = await readPackages(
-    [...new Set(dirs)],
-    config
-  );
-  const resolved = packages.map((pkg) =>
-    resolvePackage(pkg, config, (name, version) =>
-      installed.get(`${name}@${version}`)
-    )
-  );
-
-  // A configured file name can name a subdirectory of the public directory.
-  const write = (file: string, content: string) => {
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, content);
-  };
-  write(
-    noticesFile,
-    renderNotices(resolved, config, readProjectLicenseText(projectDir))
-  );
-  if (manifestFile !== undefined) {
-    write(manifestFile, renderManifest(resolved));
-  }
+    config,
+  });
 }
