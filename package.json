@@ -1,7 +1,7 @@
 {
   "name": "@city-of-helsinki/license-notices",
   "version": "0.1.0",
-  "description": "Third-party license notices for the production build of a Vite, Next.js or webpack application",
+  "description": "Third-party license notices for the production build of a Vite, Next.js, webpack or Rsbuild application",
   "keywords": [
     "vite-plugin",
     "nextjs",
