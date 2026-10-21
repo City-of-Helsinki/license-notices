@@ -1,8 +1,8 @@
 # @city-of-helsinki/license-notices
 
 Writes the license notices of every third-party package bundled into the
-production build of a Vite or Next.js application, and serves them from the
-root of the deployed application.
+production build of a Vite, Rsbuild or Next.js application, and serves them
+from the root of the deployed application.
 
 ## Why
 
@@ -52,6 +52,9 @@ the build with a message that says what to check. See
      repositoryUrl: 'https://github.com/City-of-Helsinki/<repository>',
    };
    ```
+
+   For Rsbuild, the same file, with the type imported from
+   `@city-of-helsinki/license-notices/rsbuild`.
 
    A CommonJS `next.config.js` cannot load a TypeScript file, so for Next, for
    example `scripts/thirdPartyLicenses.config.js`, typed with JSDoc:
@@ -177,6 +180,34 @@ module.exports = withSentryConfig(module.exports, {
   `@city-of-helsinki/license-notices/next` there, since the types of the main
   entry point refer to Vite.
 
+### Rsbuild
+
+Add the plugin, from the `@city-of-helsinki/license-notices/rsbuild` entry
+point, to `rsbuild.config.ts`:
+
+```ts
+import { pluginThirdPartyLicenses } from '@city-of-helsinki/license-notices/rsbuild';
+
+import { thirdPartyLicensesConfig } from './scripts/thirdPartyLicenses.config';
+
+export default defineConfig({
+  plugins: [
+    // ...
+    pluginThirdPartyLicenses(thirdPartyLicensesConfig),
+  ],
+});
+```
+
+- The plugin only runs in `rsbuild build`, and writes both files into the
+  root of the build output, `output.distPath.root`, of each web environment.
+  Rsbuild empties that directory before each build, so nothing needs to be
+  added to `.gitignore`.
+- Source maps are not needed, and production builds of Rsbuild write none by
+  default.
+- Vite does not have to be installed in an Rsbuild app. Import the
+  `ThirdPartyLicensesConfig` type from
+  `@city-of-helsinki/license-notices/rsbuild` there.
+
 ## What the notices contain
 
 - The license of the application itself, read from the `LICENSE`, `LICENCE`
@@ -215,6 +246,12 @@ set produces a byte-identical file.
   installed one. Such a file is given to the package that shipped it: the
   package it is inside of, or in the pnpm virtual store, the package in the
   same store directory. When neither tells, the build fails, see below.
+
+- **Rsbuild:** the modules in the chunks of each web environment, as the
+  compilation stats of Rspack list them, including the modules concatenated
+  into another one. A module that tree shaking removes is in no chunk, and is
+  left out. A module whose used exports Rspack inlined where they are used,
+  such as a constant, counts as bundled although it is in no chunk.
 
 ## Configuration
 
@@ -280,6 +317,7 @@ scope later:
 | `Distributed package "…" was not found in node_modules…`             | A package listed in `sassResolvedPackages` is not installed.                                                                                                       |
 | `…the Next config must enable productionBrowserSourceMaps.`          | Enable `productionBrowserSourceMaps` in the Next config. The source maps are then served along with the chunks.                                                    |
 | `No chunk in … names a source map…`                                  | Something removes the source maps before the notices are written. Put `withThirdPartyLicenses` inside the wrapper that does.                                       |
+| `The modules of the build name files in node_modules…`               | An Rsbuild module in `node_modules` belongs to no installed package. Check that the package has a `package.json` naming it and its version.                        |
 | `The source maps of the client build name files in node_modules…`    | A package ships source maps naming files outside of it, outside the pnpm virtual store. Set `experimental.turbopackInputSourceMaps` to `false` in the Next config. |
 
 ## Supported licenses
@@ -300,8 +338,8 @@ is still worthwhile.
 
 ## Limitations
 
-- **Vite 7 and 8, and Next.js 16** with Turbopack or webpack. Other bundlers
-  and frameworks are not supported.
+- **Vite 7 and 8, Next.js 16** with Turbopack or webpack, **and Rsbuild 2.**
+  Other bundlers and frameworks are not supported.
 - **npm packages in the bundle only.** Images, fonts and scripts loaded from a
   CDN are not covered, and belong in the application's own documentation.
 - **Client code only.** Code that runs only on the server, such as the server
