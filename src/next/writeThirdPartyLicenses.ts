@@ -2,21 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
-  compareCodeUnits,
   DEFAULT_MANIFEST_FILE_NAME,
   DEFAULT_NOTICES_FILE_NAME,
   type ThirdPartyLicensesConfig,
 } from '../core.js';
 import { writeNotices } from '../packageNotices.js';
-import {
-  ancestorsOf,
-  findPackageDir,
-  isDependencySource,
-} from '../packages.js';
+import { resolvePackageDirs } from '../packages.js';
 import { readClientSources } from './sourceMaps.js';
-
-/** Unresolved sources named in an error, before the rest are counted. */
-const MAX_LISTED_SOURCES = 10;
 
 /**
  * The directories of the packages with output in the client build, read
@@ -38,35 +30,14 @@ export function findClientPackageDirs(
     );
   }
 
-  const baseDirs = ancestorsOf(projectDir);
-  const dirs = new Set<string>();
-  const unresolved: string[] = [];
-  for (const source of sources.filter(isDependencySource)) {
-    const dir = findPackageDir(source, baseDirs);
-    if (dir === undefined) {
-      unresolved.push(source);
-    } else {
-      dirs.add(fs.realpathSync(dir));
-    }
-  }
-  if (unresolved.length > 0) {
-    throw new Error(
-      'The source maps of the client build name files in node_modules ' +
-        'that belong to no installed package, so their licenses cannot be ' +
-        'found:\n' +
-        unresolved
-          .slice(0, MAX_LISTED_SOURCES)
-          .map((source) => `  ${source}\n`)
-          .join('') +
-        (unresolved.length > MAX_LISTED_SOURCES
-          ? `  ...and ${unresolved.length - MAX_LISTED_SOURCES} more\n`
-          : '') +
-        'A package that ships source maps of its own can name files outside ' +
-        'of it. With Turbopack, setting experimental.turbopackInputSourceMaps ' +
-        'to false makes the source maps name the installed files instead.'
-    );
-  }
-  return [...dirs].sort(compareCodeUnits);
+  return resolvePackageDirs(
+    projectDir,
+    sources,
+    'The source maps of the client build',
+    'A package that ships source maps of its own can name files outside ' +
+      'of it. With Turbopack, setting experimental.turbopackInputSourceMaps ' +
+      'to false makes the source maps name the installed files instead.'
+  );
 }
 
 /**
