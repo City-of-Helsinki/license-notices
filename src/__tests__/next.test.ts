@@ -8,7 +8,7 @@ import {
   findPackageDir,
   isDependencySource,
   sourcePathOf,
-} from '../next/packages.js';
+} from '../packages.js';
 import {
   findMappedSourceIndices,
   findMappedSources,
@@ -16,9 +16,9 @@ import {
 } from '../next/sourceMaps.js';
 import {
   findClientPackageDirs,
-  npmTarballUrl,
   writeThirdPartyLicenses,
 } from '../next/writeThirdPartyLicenses.js';
+import { npmTarballUrl } from '../packageNotices.js';
 import { createTempProject, type TempProject } from './tempProject.js';
 
 const packageJson = (name: string) => ({ name, version: '1.0.0' });
