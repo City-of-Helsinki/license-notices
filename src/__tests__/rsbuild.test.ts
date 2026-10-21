@@ -7,6 +7,7 @@ import {
   findBundledModulePaths,
   findBundledPackageDirs,
 } from '../rsbuild/modules.js';
+import { webEnvironments } from '../rsbuild/pluginThirdPartyLicenses.js';
 import { createTempProject, type TempProject } from './tempProject.js';
 
 describe('findBundledModulePaths', () => {
@@ -34,6 +35,25 @@ describe('findBundledModulePaths', () => {
         { nameForCondition: '/p/node_modules/d/i.js', chunks: [] },
       ])
     ).toEqual([]);
+  });
+
+  it('lists modules whose used exports were inlined where they are used', () => {
+    expect(
+      findBundledModulePaths([
+        {
+          nameForCondition: '/p/node_modules/e/i.js',
+          orphan: true,
+          chunks: [],
+          usedExports: ['e'],
+        },
+        {
+          nameForCondition: '/p/node_modules/f/i.js',
+          orphan: true,
+          chunks: [],
+          usedExports: [],
+        },
+      ])
+    ).toEqual(['/p/node_modules/e/i.js']);
   });
 
   it('leaves out modules without a path', () => {
@@ -90,5 +110,26 @@ describe('findBundledPackageDirs', () => {
         ),
       })
     );
+  });
+});
+
+describe('webEnvironments', () => {
+  it('keeps only web environments, in index order', () => {
+    const web = {
+      index: 0,
+      distPath: '/d',
+      config: { output: { target: 'web' } },
+    };
+
+    expect(
+      webEnvironments({
+        ssr: {
+          index: 1,
+          distPath: '/d/s',
+          config: { output: { target: 'node' } },
+        },
+        web,
+      })
+    ).toEqual([web]);
   });
 });
