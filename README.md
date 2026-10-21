@@ -199,7 +199,9 @@ export default defineConfig({
 ```
 
 - The plugin only runs in `rsbuild build`, and writes both files into the
-  root of the build output, `output.distPath.root`, of each web environment.
+  root of the build output, `output.distPath.root`, of each environment that
+  builds for a browser (`web` or `web-worker`). Environments that share a
+  root share one set of files.
   Rsbuild empties that directory before each build, so nothing needs to be
   added to `.gitignore`.
 - Source maps are not needed, and production builds of Rsbuild write none by
@@ -247,7 +249,7 @@ set produces a byte-identical file.
   package it is inside of, or in the pnpm virtual store, the package in the
   same store directory. When neither tells, the build fails, see below.
 
-- **Rsbuild:** the modules in the chunks of each web environment, as the
+- **Rsbuild:** the modules in the chunks of each browser environment, as the
   compilation stats of Rspack list them, including the modules concatenated
   into another one. A module that tree shaking removes is in no chunk, and is
   left out. A module whose used exports Rspack inlined where they are used,
