@@ -14,6 +14,7 @@ const EMIT_TIMEOUT = 60_000;
 const VITE_TYPES = ['vite', 'rollup', 'rollup-license-plugin'];
 const NEXT_TYPES = ['next'];
 const WEBPACK_TYPES = ['webpack'];
+const RSBUILD_TYPES = ['@rsbuild/core', '@rspack/core'];
 
 /** The declaration files the build emits, by path relative to src/. */
 function emitDeclarations(): Map<string, string> {
@@ -83,9 +84,10 @@ beforeAll(() => {
 // Each entry point is for an application built with one bundler, which need
 // not have installed the others.
 it.each([
-  ['index.d.ts', [...NEXT_TYPES, ...WEBPACK_TYPES]],
-  ['next.d.ts', [...VITE_TYPES, ...WEBPACK_TYPES]],
-  ['webpack.d.ts', [...VITE_TYPES, ...NEXT_TYPES]],
+  ['index.d.ts', [...NEXT_TYPES, ...WEBPACK_TYPES, ...RSBUILD_TYPES]],
+  ['next.d.ts', [...VITE_TYPES, ...WEBPACK_TYPES, ...RSBUILD_TYPES]],
+  ['webpack.d.ts', [...VITE_TYPES, ...NEXT_TYPES, ...RSBUILD_TYPES]],
+  ['rsbuild.d.ts', [...VITE_TYPES, ...NEXT_TYPES, ...WEBPACK_TYPES]],
 ])('declares %s without the types of other bundlers', (entry, others) => {
   const external = findExternalTypes(declarations, entry);
 

@@ -7,6 +7,7 @@ import {
   findBundledModulePaths,
   findBundledPackageDirs,
 } from '../rsbuild/modules.js';
+import { webEnvironments } from '../rsbuild/pluginThirdPartyLicenses.js';
 import { createTempProject, type TempProject } from './tempProject.js';
 
 describe('findBundledModulePaths', () => {
@@ -155,5 +156,26 @@ describe('findBundledPackageDirs', () => {
         ),
       })
     );
+  });
+});
+
+describe('webEnvironments', () => {
+  it('keeps only web environments, in index order', () => {
+    const web = {
+      index: 0,
+      distPath: '/d',
+      config: { output: { target: 'web' } },
+    };
+
+    expect(
+      webEnvironments({
+        ssr: {
+          index: 1,
+          distPath: '/d/s',
+          config: { output: { target: 'node' } },
+        },
+        web,
+      })
+    ).toEqual([web]);
   });
 });
