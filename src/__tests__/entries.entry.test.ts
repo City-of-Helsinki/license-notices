@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 
-const BUNDLERS = ['vite', 'next', 'webpack'];
+const BUNDLERS = ['vite', 'next', 'webpack', '@rsbuild/core'];
 
 beforeEach(() => {
   vi.resetModules();
@@ -12,6 +12,7 @@ it.each([
   ['../index.js', 'vite', ['thirdPartyLicenses']],
   ['../next.js', 'next', ['withThirdPartyLicenses']],
   ['../webpack.js', 'webpack', ['ThirdPartyLicensesPlugin']],
+  ['../rsbuild.js', '@rsbuild/core', ['pluginThirdPartyLicenses']],
 ])('loads %s without the other bundlers', async (entry, own, exports) => {
   for (const bundler of BUNDLERS.filter((name) => name !== own)) {
     vi.doMock(bundler, () => {

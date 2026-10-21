@@ -6,6 +6,7 @@
     "vite-plugin",
     "nextjs",
     "webpack-plugin",
+    "rsbuild-plugin",
     "license",
     "third-party-notices",
     "open-source-compliance"
@@ -30,6 +31,10 @@
     "./webpack": {
       "types": "./dist/webpack.d.ts",
       "default": "./dist/webpack.js"
+    },
+    "./rsbuild": {
+      "types": "./dist/rsbuild.d.ts",
+      "default": "./dist/rsbuild.js"
     }
   },
   "files": [
@@ -58,11 +63,15 @@
     "spdx-expression-parse": "^5.0.0"
   },
   "peerDependencies": {
+    "@rsbuild/core": "^2",
     "next": "^16",
     "vite": "^7 || ^8",
     "webpack": "^5"
   },
   "peerDependenciesMeta": {
+    "@rsbuild/core": {
+      "optional": true
+    },
     "next": {
       "optional": true
     },
@@ -77,6 +86,7 @@
     "@commitlint/cli": "^21.2.3",
     "@commitlint/config-conventional": "^21.2.3",
     "@eslint/js": "^10.0.1",
+    "@rsbuild/core": "^2.2.13",
     "@types/node": "^22",
     "@types/spdx-expression-parse": "^4.0.0",
     "@vitest/coverage-v8": "4.1.12",
