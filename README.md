@@ -286,9 +286,37 @@ reasons to make one:
   },
   ```
 
+  A package that declares a choice often ships the text of each license in a
+  file of its own, next to a `LICENSE` that names only the choice. ibantools
+  ships `LICENSE` with just `MIT OR MPL-2.0`, `LICENSE.MIT` and
+  `LICENSE.MPL-2.0`. So when a decision elects one license of a declared
+  choice, the notice uses the first of these that exists:
+  1. the file the decision names as `licenseFile`, which must exist:
+
+     ```ts
+     dompurify: {
+       license: 'MPL-2.0',
+       licenseFile: 'LICENSE-MPL',
+       note: '…',
+     },
+     ```
+
+  2. a file named for the elected license: `LICENSE` or `LICENCE`, `.` or
+     `-`, the SPDX identifier, and optionally `.txt` or `.md`, in any case,
+     such as `LICENSE.MIT` or `licence-Apache-2.0.txt`,
+  3. a license file whose text is that of the elected license, for MIT, ISC,
+     Apache-2.0, MPL-2.0, BSD-2-Clause, BSD-3-Clause and OFL-1.1,
+  4. a notice rebuilt from the canonical text of the elected license and the
+     author in `package.json`, for the licenses listed under
+     [Supported licenses](#supported-licenses), marked as rebuilt in the
+     notices.
+
+  If none applies, the build fails and lists the license files the package
+  ships, so that the right one can be named as `licenseFile`.
+
 - **To name the license of a package that declares no valid SPDX
   identifier**, such as `"BSD"` or `"SEE LICENSE IN LICENSE.md"`, after reading
-  its license file.
+  its license file. Its license file is used as it is.
 
 The note says why, and it is printed in the notices, because a reader cannot
 verify either kind of decision from the bundle.
