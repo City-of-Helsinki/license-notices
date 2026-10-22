@@ -71,4 +71,29 @@ describe('writeNotices', () => {
       fs.readFileSync(path.join(outputDir, 'third-party-licenses.txt'), 'utf8')
     ).toContain('Copyright (c) Choice Author');
   });
+
+  it('writes the license file the config names as that of the application', async () => {
+    project = createTempProject({
+      LICENSE: 'MIT License\n\nCopyright (c) City of Helsinki\n',
+      'site/LICENSE': 'The MIT License (MIT)\n\nCopyright (c) Gatsby\n',
+    });
+    const site = path.join(project.root, 'site');
+
+    await writeNotices({
+      projectDir: site,
+      outputDir: path.join(site, 'out'),
+      packageDirs: [],
+      config: {
+        repositoryUrl: 'https://example.com/app',
+        projectLicenseFile: '../LICENSE',
+      },
+    });
+
+    const notices = fs.readFileSync(
+      path.join(site, 'out/third-party-licenses.txt'),
+      'utf8'
+    );
+    expect(notices).toContain('City of Helsinki');
+    expect(notices).not.toContain('Gatsby');
+  });
 });
