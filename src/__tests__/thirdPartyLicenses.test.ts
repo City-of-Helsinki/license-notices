@@ -10,6 +10,7 @@ import {
   compareCodeUnits,
   formatAuthor,
   findDecision,
+  isFirstParty,
   isLicenseFileFor,
   findInstalledPackages,
   findSassResolvedPackages,
@@ -19,6 +20,7 @@ import {
   renderNotices,
   resolvePackage,
   thirdPartyLicenses,
+  validateFirstPartyPackages,
   wrapText,
   type ThirdPartyLicensesConfig,
 } from '../thirdPartyLicenses.js';
@@ -524,6 +526,26 @@ describe('a license elected from a choice', () => {
 
     expect(resolved.licenseText).toBe('Redistribution and use, Copyright Old');
     expect(resolved.licenseTextReconstructed).toBe(false);
+  });
+});
+
+describe('isFirstParty', () => {
+  it('matches names and whole scopes', () => {
+    const firstParty = config({ firstPartyPackages: ['hds-core', '@hds/*'] });
+
+    expect(isFirstParty('hds-core', firstParty)).toBe(true);
+    expect(isFirstParty('@hds/x', firstParty)).toBe(true);
+    // The directory of an archived copy, never the name of a package.
+    expect(isFirstParty('hds-core-4.10.0', firstParty)).toBe(false);
+    expect(isFirstParty('hds-react', firstParty)).toBe(false);
+    expect(isFirstParty('hds-core', config())).toBe(false);
+  });
+
+  it('refuses a pattern other than a whole scope', () => {
+    expect(() => validateFirstPartyPackages(['hds-*'])).toThrow(
+      'First-party package "hds-*" is neither a package name nor a scope ' +
+        'pattern such as "@scope/*".'
+    );
   });
 });
 

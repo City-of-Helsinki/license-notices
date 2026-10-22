@@ -1,6 +1,10 @@
 import type { NextConfig } from 'next';
 
-import { validateDecisions, type ThirdPartyLicensesConfig } from '../core.js';
+import {
+  validateDecisions,
+  validateFirstPartyPackages,
+  type ThirdPartyLicensesConfig,
+} from '../core.js';
 import { writeThirdPartyLicenses } from './writeThirdPartyLicenses.js';
 
 type NextConfigFunction = (
@@ -54,6 +58,7 @@ export function withThirdPartyLicenses(
   config: ThirdPartyLicensesConfig
 ): NextConfig | NextConfigFunction {
   validateDecisions(config.licenseDecisions ?? {});
+  validateFirstPartyPackages(config.firstPartyPackages);
   if (typeof nextConfig === 'function') {
     return async (phase, context) =>
       addNoticesHook(await nextConfig(phase, context), config);

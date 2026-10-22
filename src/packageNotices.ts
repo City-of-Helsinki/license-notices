@@ -13,6 +13,7 @@ import {
   DEFAULT_NOTICES_FILE_NAME,
   findDecision,
   findSassResolvedPackages,
+  isFirstParty,
   readLicenseField,
   readProjectLicenseText,
   renderManifest,
@@ -58,6 +59,10 @@ export async function readPackages(
   const installed = new Map<string, InstalledPackage>();
   for (const dir of dirs) {
     const meta = await readPackageMeta(dir);
+    // Before its license is read, which could fail the build.
+    if (isFirstParty(meta.name, config)) {
+      continue;
+    }
     const id = `${meta.name}@${meta.version}`;
     // The same version installed twice, for different peer dependencies in
     // the pnpm virtual store, ships the same license.
