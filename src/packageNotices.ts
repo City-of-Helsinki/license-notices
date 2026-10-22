@@ -84,6 +84,7 @@ export async function readPackages(
       name: meta.name,
       version: meta.version,
       declaredLicense: readLicenseField(meta),
+      dir,
     });
   }
   return { packages: [...packages.values()], installed };

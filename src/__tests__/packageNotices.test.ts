@@ -41,4 +41,34 @@ describe('writeNotices', () => {
       )
     ).toHaveLength(1);
   });
+
+  it('uses the text of the license a decision elects', async () => {
+    project = createTempProject({
+      'node_modules/choice/package.json': {
+        name: 'choice',
+        version: '1.0.0',
+        license: 'MIT or MPL-2.0',
+      },
+      'node_modules/choice/LICENSE': 'MIT OR MPL-2.0',
+      'node_modules/choice/LICENSE.MIT':
+        'MIT License\n\nCopyright (c) Choice Author\n',
+    });
+    const outputDir = path.join(project.root, 'out');
+
+    await writeNotices({
+      projectDir: project.root,
+      outputDir,
+      packageDirs: [path.join(project.root, 'node_modules/choice')],
+      config: {
+        repositoryUrl: 'https://example.com/app',
+        licenseDecisions: {
+          choice: { license: 'MIT', note: 'This distribution elects MIT.' },
+        },
+      },
+    });
+
+    expect(
+      fs.readFileSync(path.join(outputDir, 'third-party-licenses.txt'), 'utf8')
+    ).toContain('Copyright (c) Choice Author');
+  });
 });
