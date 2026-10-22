@@ -7,7 +7,10 @@ import {
   findBundledModulePaths,
   findBundledPackageDirs,
 } from '../rsbuild/modules.js';
-import { browserOutputs } from '../rsbuild/pluginThirdPartyLicenses.js';
+import {
+  browserOutputs,
+  pluginThirdPartyLicenses,
+} from '../rsbuild/pluginThirdPartyLicenses.js';
 import { createTempProject, type TempProject } from './tempProject.js';
 
 describe('findBundledModulePaths', () => {
@@ -130,5 +133,18 @@ describe('browserOutputs', () => {
       { distPath: '/d', environments: [web, worker] },
       { distPath: '/legacy', environments: [legacy] },
     ]);
+  });
+});
+
+describe('pluginThirdPartyLicenses', () => {
+  it('refuses a scope pattern without the guard', () => {
+    expect(() =>
+      pluginThirdPartyLicenses({
+        repositoryUrl: 'https://example.com/app',
+        licenseDecisions: {
+          '@vendor/*': { license: 'MIT', note: 'Unguarded.' },
+        },
+      })
+    ).toThrow('must state the license the packages it replaces declare');
   });
 });
