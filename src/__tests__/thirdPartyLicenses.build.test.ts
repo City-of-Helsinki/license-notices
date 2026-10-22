@@ -226,4 +226,16 @@ describe('thirdPartyLicenses in a Vite build', () => {
       rogue.remove();
     }
   });
+
+  it('leaves first-party packages out', async () => {
+    const files = await buildFixture(project.root, {
+      repositoryUrl: 'https://example.com/app',
+      licenseDecisions: decisions,
+      firstPartyPackages: ['plain'],
+    });
+    const notices = files.get('third-party-licenses.txt') ?? '';
+
+    expect(notices).toContain('dual-licensed@1.0.0');
+    expect(notices).not.toContain('plain@1.0.0');
+  });
 });

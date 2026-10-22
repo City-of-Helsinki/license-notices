@@ -81,6 +81,13 @@ export type ThirdPartyLicensesConfig = {
    */
   licenseDecisions?: Record<string, LicenseDecision>;
   /**
+   * Packages that are part of the application itself, such as the workspace
+   * packages of a monorepo, under the license of the application. Package
+   * names, or a whole scope such as "@scope/*". They are left out of the
+   * notices and the manifest.
+   */
+  firstPartyPackages?: string[];
+  /**
    * The license file of the application, relative to the project directory,
    * for a project whose own directory holds none or the wrong one, such as
    * an app in a monorepo. Found in the project directory by default.
@@ -442,6 +449,31 @@ export function validateDecisions(
  * The decision that applies to a package, with the key it is configured
  * under. An exact name takes precedence over the pattern of its scope.
  */
+/**
+ * Fails on a first-party entry that is neither a package name nor a whole
+ * scope, which would otherwise silently match nothing.
+ */
+export function validateFirstPartyPackages(names: string[] = []): void {
+  for (const name of names) {
+    if (name.includes('*') && !SCOPE_PATTERN.test(name)) {
+      throw new Error(
+        `First-party package "${name}" is neither a package name nor a ` +
+          'scope pattern such as "@scope/*".'
+      );
+    }
+  }
+}
+
+/** Whether a package is part of the application, by its package name. */
+export function isFirstParty(
+  name: string,
+  config: ThirdPartyLicensesConfig
+): boolean {
+  const names = config.firstPartyPackages ?? [];
+  const scope = name.startsWith('@') ? `${name.split('/')[0]}/*` : undefined;
+  return names.includes(name) || (scope !== undefined && names.includes(scope));
+}
+
 export function findDecision(
   name: string,
   decisions: Record<string, LicenseDecision> = {}
