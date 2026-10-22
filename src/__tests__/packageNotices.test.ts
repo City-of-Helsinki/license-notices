@@ -96,4 +96,45 @@ describe('writeNotices', () => {
     expect(notices).toContain('City of Helsinki');
     expect(notices).not.toContain('Gatsby');
   });
+
+  it('leaves first-party packages out', async () => {
+    project = createTempProject({
+      'node_modules/a/package.json': {
+        name: 'a',
+        version: '1.0.0',
+        license: 'MIT',
+      },
+      // A license field that fails the build when read.
+      'node_modules/hds-core/package.json': {
+        name: 'hds-core',
+        version: '9.0.0',
+        license: 'SEE LICENSE IN LICENSE',
+      },
+    });
+    const outputDir = path.join(project.root, 'out');
+
+    await writeNotices({
+      projectDir: project.root,
+      outputDir,
+      packageDirs: ['a', 'hds-core'].map((name) =>
+        path.join(project.root, 'node_modules', name)
+      ),
+      config: {
+        repositoryUrl: 'https://example.com/app',
+        firstPartyPackages: ['hds-core'],
+      },
+    });
+
+    const notices = fs.readFileSync(
+      path.join(outputDir, 'third-party-licenses.txt'),
+      'utf8'
+    );
+    expect(notices).toContain('a@1.0.0');
+    expect(notices).not.toContain('hds-core');
+    expect(
+      JSON.parse(
+        fs.readFileSync(path.join(outputDir, 'oss-licenses.json'), 'utf8')
+      )
+    ).toHaveLength(1);
+  });
 });
