@@ -36,6 +36,25 @@ describe('findBundledModulePaths', () => {
     ).toEqual([]);
   });
 
+  it('lists modules whose used exports were inlined where they are used', () => {
+    expect(
+      findBundledModulePaths([
+        {
+          nameForCondition: '/p/node_modules/e/i.js',
+          orphan: true,
+          chunks: [],
+          usedExports: ['e'],
+        },
+        {
+          nameForCondition: '/p/node_modules/f/i.js',
+          orphan: true,
+          chunks: [],
+          usedExports: [],
+        },
+      ])
+    ).toEqual(['/p/node_modules/e/i.js']);
+  });
+
   it('leaves out modules without a path', () => {
     expect(findBundledModulePaths([{ chunks: [0] }])).toEqual([]);
   });

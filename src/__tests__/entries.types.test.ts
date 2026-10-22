@@ -2,16 +2,16 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import ts from 'typescript';
-import { beforeAll, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 
 const SOURCE_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..'
 );
-// Emitting the declarations of the whole source takes seconds on a CI runner.
-const EMIT_TIMEOUT = 60_000;
-// The packages whose types import those of Vite or Rollup.
+// The packages whose types each bundler brings, Vite through Rollup.
 const VITE_TYPES = ['vite', 'rollup', 'rollup-license-plugin'];
+const NEXT_TYPES = ['next'];
+const WEBPACK_TYPES = ['webpack'];
 
 /** The declaration files the build emits, by path relative to src/. */
 function emitDeclarations(): Map<string, string> {
@@ -46,13 +46,11 @@ function importsOf(text: string): string[] {
   );
 }
 
-let declarations: Map<string, string>;
-
-beforeAll(() => {
-  declarations = emitDeclarations();
-}, EMIT_TIMEOUT);
-
-it('declares the Next entry point without the types of vite', () => {
+/** The packages outside of this one whose types a declaration reaches. */
+function findExternalTypes(
+  declarations: Map<string, string>,
+  entry: string
+): string[] {
   const reached = new Set<string>();
   const external = new Set<string>();
   const visit = (file: string) => {
@@ -70,9 +68,18 @@ it('declares the Next entry point without the types of vite', () => {
       }
     }
   };
+  visit(entry);
+  return [...external];
+}
 
-  visit('next.d.ts');
+// Each entry point is for an application built with one bundler, which need
+// not have installed the others.
+it.each([
+  ['index.d.ts', [...NEXT_TYPES, ...WEBPACK_TYPES]],
+  ['next.d.ts', [...VITE_TYPES, ...WEBPACK_TYPES]],
+  ['webpack.d.ts', [...VITE_TYPES, ...NEXT_TYPES]],
+])('declares %s without the types of other bundlers', (entry, others) => {
+  const external = findExternalTypes(emitDeclarations(), entry);
 
-  expect(reached).toContain('core.d.ts');
-  expect([...external].filter((name) => VITE_TYPES.includes(name))).toEqual([]);
+  expect(external.filter((name) => others.includes(name))).toEqual([]);
 });
