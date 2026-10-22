@@ -96,20 +96,18 @@ export async function readPackages(
 }
 
 /**
- * Writes the notices, and the manifest unless it is disabled, of the given
- * packages and of the configured Sass-resolved ones into a directory.
+ * The notices, and the manifest unless it is disabled, of the given packages
+ * and of the configured Sass-resolved ones, by file name.
  */
-export async function writeNotices({
+export async function renderNoticeFiles({
   projectDir,
-  outputDir,
   packageDirs,
   config,
 }: {
   projectDir: string;
-  outputDir: string;
   packageDirs: string[];
   config: ThirdPartyLicensesConfig;
-}): Promise<void> {
+}): Promise<Map<string, string>> {
   const dirs = [
     ...packageDirs,
     ...findSassResolvedPackages(projectDir, config.sassResolvedPackages).map(
@@ -126,23 +124,38 @@ export async function writeNotices({
     )
   );
 
-  // A configured file name can name a subdirectory of the output directory.
-  const write = (fileName: string, content: string) => {
-    const file = path.join(outputDir, fileName);
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, content);
-  };
-  write(
-    config.noticesFileName ?? DEFAULT_NOTICES_FILE_NAME,
-    renderNotices(
-      resolved,
-      config,
-      readProjectLicenseText(projectDir, config.projectLicenseFile)
-    )
-  );
+  const files = new Map([
+    [
+      config.noticesFileName ?? DEFAULT_NOTICES_FILE_NAME,
+      renderNotices(
+        resolved,
+        config,
+        readProjectLicenseText(projectDir, config.projectLicenseFile)
+      ),
+    ],
+  ]);
   const manifestFileName =
     config.manifestFileName ?? DEFAULT_MANIFEST_FILE_NAME;
   if (manifestFileName) {
-    write(manifestFileName, renderManifest(resolved));
+    files.set(manifestFileName, renderManifest(resolved));
+  }
+  return files;
+}
+
+/** Writes the files of renderNoticeFiles into a directory. */
+export async function writeNotices({
+  outputDir,
+  ...options
+}: {
+  projectDir: string;
+  outputDir: string;
+  packageDirs: string[];
+  config: ThirdPartyLicensesConfig;
+}): Promise<void> {
+  for (const [fileName, content] of await renderNoticeFiles(options)) {
+    // A configured file name can name a subdirectory of the output directory.
+    const file = path.join(outputDir, fileName);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, content);
   }
 }

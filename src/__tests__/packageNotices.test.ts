@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { writeNotices } from '../packageNotices.js';
+import { renderNoticeFiles, writeNotices } from '../packageNotices.js';
 import { createTempProject, type TempProject } from './tempProject.js';
 
 describe('writeNotices', () => {
@@ -136,5 +136,28 @@ describe('writeNotices', () => {
         fs.readFileSync(path.join(outputDir, 'oss-licenses.json'), 'utf8')
       )
     ).toHaveLength(1);
+  });
+
+  it('renders the notice files without writing them', async () => {
+    project = createTempProject({
+      'node_modules/a/package.json': {
+        name: 'a',
+        version: '1.0.0',
+        license: 'MIT',
+      },
+    });
+
+    const files = await renderNoticeFiles({
+      projectDir: project.root,
+      packageDirs: [path.join(project.root, 'node_modules/a')],
+      config: { repositoryUrl: 'https://example.com/app' },
+    });
+
+    expect([...files.keys()]).toEqual([
+      'third-party-licenses.txt',
+      'oss-licenses.json',
+    ]);
+    expect(files.get('third-party-licenses.txt')).toContain('a@1.0.0');
+    expect(fs.readdirSync(project.root)).toEqual(['node_modules']);
   });
 });
