@@ -12,6 +12,8 @@ import {
   findDecision,
   isLicenseFileFor,
   findInstalledPackages,
+  findSassResolvedPackages,
+  readProjectLicenseText,
   reconstructLicenseText,
   renderManifest,
   renderNotices,
@@ -636,6 +638,48 @@ describe('the license decision guard', () => {
         })
       )
     ).toThrow('is neither a package name nor a scope pattern');
+  });
+});
+
+describe('readProjectLicenseText', () => {
+  let project: TempProject;
+
+  afterEach(() => project.remove());
+
+  it('reads the license file the config names', () => {
+    project = createTempProject({
+      'site/LICENSE': 'Gatsby',
+      LICENSE: 'City of Helsinki',
+    });
+
+    expect(
+      readProjectLicenseText(path.join(project.root, 'site'), '../LICENSE')
+    ).toBe('City of Helsinki');
+  });
+
+  it('fails when the license file the config names is missing', () => {
+    project = createTempProject({ 'site/LICENSE': 'Gatsby' });
+
+    expect(() =>
+      readProjectLicenseText(path.join(project.root, 'site'), '../NOPE')
+    ).toThrow('The project license file "../NOPE" was not found');
+  });
+});
+
+describe('findSassResolvedPackages', () => {
+  let project: TempProject;
+
+  afterEach(() => project.remove());
+
+  it('finds a package installed in a directory above the project', () => {
+    project = createTempProject({
+      'node_modules/tokens/package.json': { name: 'tokens', version: '1.0.0' },
+      'site/package.json': { name: 'site' },
+    });
+
+    expect(
+      findSassResolvedPackages(path.join(project.root, 'site'), ['tokens'])
+    ).toEqual([path.join(project.root, 'node_modules/tokens')]);
   });
 });
 

@@ -81,6 +81,12 @@ export type ThirdPartyLicensesConfig = {
    */
   licenseDecisions?: Record<string, LicenseDecision>;
   /**
+   * The license file of the application, relative to the project directory,
+   * for a project whose own directory holds none or the wrong one, such as
+   * an app in a monorepo. Found in the project directory by default.
+   */
+  projectLicenseFile?: string;
+  /**
    * Distributed packages that stay invisible to the bundler, because Sass
    * resolves and inlines them while compiling the stylesheets.
    */
@@ -891,7 +897,19 @@ export function renderManifest(packages: ResolvedPackage[]): string {
 }
 
 /** Reads the license file of the project itself, when it has one. */
-export function readProjectLicenseText(root: string): string | undefined {
+export function readProjectLicenseText(
+  root: string,
+  licenseFile?: string
+): string | undefined {
+  if (licenseFile !== undefined) {
+    const file = path.resolve(root, licenseFile);
+    if (!fs.existsSync(file)) {
+      throw new Error(
+        `The project license file "${licenseFile}" was not found in ${root}.`
+      );
+    }
+    return fs.readFileSync(file, 'utf8');
+  }
   const fileName = fs
     .readdirSync(root)
     .filter((name) => /^(licen[cs]e|copying)([.-].*)?$/i.test(name))
@@ -916,9 +934,17 @@ export function findSassResolvedPackages(
   root: string,
   names: string[] = []
 ): string[] {
+  // The project and each directory above it, nearest first, as Node resolves
+  // a package, so that a package hoisted to the root of a workspace is found.
+  const dirs = [path.resolve(root)];
+  while (path.dirname(dirs.at(-1)!) !== dirs.at(-1)) {
+    dirs.push(path.dirname(dirs.at(-1)!));
+  }
   return names.map((name) => {
-    const packageDir = path.resolve(root, 'node_modules', name);
-    if (!fs.existsSync(packageDir)) {
+    const packageDir = dirs
+      .map((dir) => path.join(dir, 'node_modules', name))
+      .find((candidate) => fs.existsSync(candidate));
+    if (packageDir === undefined) {
       throw new Error(
         `Distributed package "${name}" was not found in node_modules, ` +
           'so its license would be missing from the third-party notices.'

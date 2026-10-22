@@ -129,7 +129,11 @@ export async function writeNotices({
   };
   write(
     config.noticesFileName ?? DEFAULT_NOTICES_FILE_NAME,
-    renderNotices(resolved, config, readProjectLicenseText(projectDir))
+    renderNotices(
+      resolved,
+      config,
+      readProjectLicenseText(projectDir, config.projectLicenseFile)
+    )
   );
   const manifestFileName =
     config.manifestFileName ?? DEFAULT_MANIFEST_FILE_NAME;

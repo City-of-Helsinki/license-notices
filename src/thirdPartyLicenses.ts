@@ -63,7 +63,7 @@ export function thirdPartyLicenses(config: ThirdPartyLicensesConfig): Plugin {
         renderNotices(
           resolveAll(packages),
           config,
-          readProjectLicenseText(root)
+          readProjectLicenseText(root, config.projectLicenseFile)
         ),
       ...(manifestFileName
         ? {
