@@ -20,9 +20,13 @@ export const STATS_OPTIONS = {
   usedExports: true,
 } as const;
 
-/** The part of a module in the stats JSON of Rspack that is read here. */
+/**
+ * The part of a module in the stats JSON of Rspack that is read here.
+ * webpack names a module without a file, such as a context or an external
+ * module, as null, where Rspack leaves the name out.
+ */
 export type StatsModuleLike = {
-  nameForCondition?: string;
+  nameForCondition?: string | null;
   orphan?: boolean;
   chunks?: (string | number)[];
   usedExports?: boolean | string[] | null;
@@ -52,7 +56,7 @@ function isBundled(module: StatsModuleLike): boolean {
  */
 export function findBundledModulePaths(modules: StatsModuleLike[]): string[] {
   const paths = (module: StatsModuleLike): string[] => [
-    ...(module.nameForCondition === undefined ? [] : [module.nameForCondition]),
+    ...(module.nameForCondition == null ? [] : [module.nameForCondition]),
     ...(module.modules ?? []).flatMap(paths),
   ];
   return modules.filter(isBundled).flatMap(paths);

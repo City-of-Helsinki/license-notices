@@ -36,6 +36,19 @@ describe('findBundledModulePaths', () => {
     ).toEqual([]);
   });
 
+  it('skips modules without a file, which webpack names as null', () => {
+    expect(
+      findBundledModulePaths([
+        { nameForCondition: null, chunks: [0] },
+        {
+          nameForCondition: '/p/x.js',
+          chunks: [0],
+          modules: [{ nameForCondition: null }],
+        },
+      ])
+    ).toEqual(['/p/x.js']);
+  });
+
   it('lists modules whose used exports were inlined where they are used', () => {
     expect(
       findBundledModulePaths([
