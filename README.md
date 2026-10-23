@@ -1,8 +1,8 @@
 # @city-of-helsinki/license-notices
 
 Writes the license notices of every third-party package bundled into the
-production build of a Vite or Next.js application, and serves them from the
-root of the deployed application.
+production build of a Vite, Rsbuild or Next.js application, and serves them
+from the root of the deployed application.
 
 ## Why
 
@@ -52,6 +52,9 @@ the build with a message that says what to check. See
      repositoryUrl: 'https://github.com/City-of-Helsinki/<repository>',
    };
    ```
+
+   For Rsbuild, the same file, with the type imported from
+   `@city-of-helsinki/license-notices/rsbuild`.
 
    A CommonJS `next.config.js` cannot load a TypeScript file, so for Next, for
    example `scripts/thirdPartyLicenses.config.js`, typed with JSDoc:
@@ -177,6 +180,36 @@ module.exports = withSentryConfig(module.exports, {
   `@city-of-helsinki/license-notices/next` there, since the types of the main
   entry point refer to Vite.
 
+### Rsbuild
+
+Add the plugin, from the `@city-of-helsinki/license-notices/rsbuild` entry
+point, to `rsbuild.config.ts`:
+
+```ts
+import { pluginThirdPartyLicenses } from '@city-of-helsinki/license-notices/rsbuild';
+
+import { thirdPartyLicensesConfig } from './scripts/thirdPartyLicenses.config';
+
+export default defineConfig({
+  plugins: [
+    // ...
+    pluginThirdPartyLicenses(thirdPartyLicensesConfig),
+  ],
+});
+```
+
+- The plugin only runs in `rsbuild build`, and writes both files into the
+  root of the build output, `output.distPath.root`, of each environment that
+  builds for a browser (`web` or `web-worker`). Environments that share a
+  root share one set of files.
+  Rsbuild empties that directory before each build, so nothing needs to be
+  added to `.gitignore`.
+- Source maps are not needed, and production builds of Rsbuild write none by
+  default.
+- Vite does not have to be installed in an Rsbuild app. Import the
+  `ThirdPartyLicensesConfig` type from
+  `@city-of-helsinki/license-notices/rsbuild` there.
+
 ## What the notices contain
 
 - The license of the application itself, read from the `LICENSE`, `LICENCE`
@@ -216,6 +249,12 @@ set produces a byte-identical file.
   package it is inside of, or in the pnpm virtual store, the package in the
   same store directory. When neither tells, the build fails, see below.
 
+- **Rsbuild:** the modules in the chunks of each browser environment, as the
+  compilation stats of Rspack list them, including the modules concatenated
+  into another one. A module that tree shaking removes is in no chunk, and is
+  left out. A module whose used exports Rspack inlined where they are used,
+  such as a constant, counts as bundled although it is in no chunk.
+
 ## Configuration
 
 | Option                 | Description                                                                                                                                                  |
@@ -247,9 +286,37 @@ reasons to make one:
   },
   ```
 
+  A package that declares a choice often ships the text of each license in a
+  file of its own, next to a `LICENSE` that names only the choice. ibantools
+  ships `LICENSE` with just `MIT OR MPL-2.0`, `LICENSE.MIT` and
+  `LICENSE.MPL-2.0`. So when a decision elects one license of a declared
+  choice, the notice uses the first of these that exists:
+  1. the file the decision names as `licenseFile`, which must exist:
+
+     ```ts
+     dompurify: {
+       license: 'MPL-2.0',
+       licenseFile: 'LICENSE-MPL',
+       note: '…',
+     },
+     ```
+
+  2. a file named for the elected license: `LICENSE` or `LICENCE`, `.` or
+     `-`, the SPDX identifier, and optionally `.txt` or `.md`, in any case,
+     such as `LICENSE.MIT` or `licence-Apache-2.0.txt`,
+  3. a license file whose text is that of the elected license, for MIT, ISC,
+     Apache-2.0, MPL-2.0, BSD-2-Clause, BSD-3-Clause and OFL-1.1,
+  4. a notice rebuilt from the canonical text of the elected license and the
+     author in `package.json`, for the licenses listed under
+     [Supported licenses](#supported-licenses), marked as rebuilt in the
+     notices.
+
+  If none applies, the build fails and lists the license files the package
+  ships, so that the right one can be named as `licenseFile`.
+
 - **To name the license of a package that declares no valid SPDX
   identifier**, such as `"BSD"` or `"SEE LICENSE IN LICENSE.md"`, after reading
-  its license file.
+  its license file. Its license file is used as it is.
 
 The note says why, and it is printed in the notices, because a reader cannot
 verify either kind of decision from the bundle.
@@ -280,6 +347,7 @@ scope later:
 | `Distributed package "…" was not found in node_modules…`             | A package listed in `sassResolvedPackages` is not installed.                                                                                                       |
 | `…the Next config must enable productionBrowserSourceMaps.`          | Enable `productionBrowserSourceMaps` in the Next config. The source maps are then served along with the chunks.                                                    |
 | `No chunk in … names a source map…`                                  | Something removes the source maps before the notices are written. Put `withThirdPartyLicenses` inside the wrapper that does.                                       |
+| `The modules of the build name files in node_modules…`               | An Rsbuild module in `node_modules` belongs to no installed package. Check that the package has a `package.json` naming it and its version.                        |
 | `The source maps of the client build name files in node_modules…`    | A package ships source maps naming files outside of it, outside the pnpm virtual store. Set `experimental.turbopackInputSourceMaps` to `false` in the Next config. |
 
 ## Supported licenses
@@ -300,8 +368,8 @@ is still worthwhile.
 
 ## Limitations
 
-- **Vite 7 and 8, and Next.js 16** with Turbopack or webpack. Other bundlers
-  and frameworks are not supported.
+- **Vite 7 and 8, Next.js 16** with Turbopack or webpack, **and Rsbuild 2.**
+  Other bundlers and frameworks are not supported.
 - **npm packages in the bundle only.** Images, fonts and scripts loaded from a
   CDN are not covered, and belong in the application's own documentation.
 - **Client code only.** Code that runs only on the server, such as the server

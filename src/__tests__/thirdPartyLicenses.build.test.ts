@@ -52,6 +52,10 @@ const decisions: ThirdPartyLicensesConfig['licenseDecisions'] = {
     license: 'Apache-2.0',
     note: 'This distribution elects Apache-2.0.',
   },
+  'choice-files': {
+    license: 'MIT',
+    note: 'This distribution elects MIT.',
+  },
   'custom-licensed': {
     license: 'BSD-3-Clause',
     note: 'Its license file is the three-clause BSD license.',
@@ -70,11 +74,23 @@ beforeAll(() => {
     LICENSE: 'MIT License\n\nCopyright (c) Fixture App\n',
     ...entry([
       'dual-licensed',
+      'choice-files',
       'custom-licensed',
       'plain',
       '@vendor/one',
       '@vendor/two',
     ]),
+    // A file naming only the choice, next to the text of each license, as
+    // ibantools ships them.
+    ...dependency('choice-files', 'MIT or MPL-2.0', [
+      'LICENSE',
+      'MIT OR MPL-2.0',
+    ]),
+    'node_modules/choice-files/LICENSE.MIT':
+      'MIT License\n\nCopyright (c) Choice Author\n\nPermission is hereby ' +
+      'granted, free of charge, to any person obtaining a copy\n',
+    'node_modules/choice-files/LICENSE.MPL-2.0':
+      'Mozilla Public License Version 2.0\n',
     ...dependency('dual-licensed', '(MPL-2.0 OR Apache-2.0)', [
       'LICENSE',
       'Dual license text',
@@ -141,12 +157,17 @@ describe('thirdPartyLicenses in a Vite build', () => {
         `Declared as: ${VENDOR_LICENSE}`
     );
     expect(notices).toContain('Custom license text');
+    expect(notices).toContain(
+      'choice-files@1.0.0\nLicense: MIT\nDeclared as: MIT or MPL-2.0'
+    );
+    expect(notices).toContain('Copyright (c) Choice Author');
     expect(notices).toContain('plain@1.0.0\nLicense: MIT\n');
     // Read from the Vite root, which is not the working directory here.
     expect(notices).toContain('Copyright (c) Fixture App');
     expect(manifest.map((pkg: { name: string }) => pkg.name).sort()).toEqual([
       '@vendor/one',
       '@vendor/two',
+      'choice-files',
       'custom-licensed',
       'dual-licensed',
       'plain',
@@ -179,6 +200,7 @@ describe('thirdPartyLicenses in a Vite build', () => {
         repositoryUrl: 'https://example.com/app',
         licenseDecisions: {
           'dual-licensed': decisions['dual-licensed'],
+          'choice-files': decisions['choice-files'],
           '@vendor/*': decisions['@vendor/*'],
         },
       })

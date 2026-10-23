@@ -2,14 +2,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import ts from 'typescript';
-import { expect, it } from 'vitest';
+import { beforeAll, expect, it } from 'vitest';
 
 const SOURCE_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..'
 );
-// The packages whose types import those of Vite or Rollup.
+// Emitting the declarations of the whole source takes seconds on a CI runner.
+const EMIT_TIMEOUT = 60_000;
+// The packages whose types each bundler brings, Vite through Rollup.
 const VITE_TYPES = ['vite', 'rollup', 'rollup-license-plugin'];
+const NEXT_TYPES = ['next'];
+const RSBUILD_TYPES = ['@rsbuild/core', '@rspack/core'];
 
 /** The declaration files the build emits, by path relative to src/. */
 function emitDeclarations(): Map<string, string> {
@@ -44,8 +48,11 @@ function importsOf(text: string): string[] {
   );
 }
 
-it('declares the Next entry point without the types of vite', () => {
-  const declarations = emitDeclarations();
+/** The packages outside of this one whose types a declaration reaches. */
+function findExternalTypes(
+  declarations: Map<string, string>,
+  entry: string
+): string[] {
   const reached = new Set<string>();
   const external = new Set<string>();
   const visit = (file: string) => {
@@ -63,9 +70,24 @@ it('declares the Next entry point without the types of vite', () => {
       }
     }
   };
+  visit(entry);
+  return [...external];
+}
 
-  visit('next.d.ts');
+let declarations: Map<string, string>;
 
-  expect(reached).toContain('core.d.ts');
-  expect([...external].filter((name) => VITE_TYPES.includes(name))).toEqual([]);
+beforeAll(() => {
+  declarations = emitDeclarations();
+}, EMIT_TIMEOUT);
+
+// Each entry point is for an application built with one bundler, which need
+// not have installed the others.
+it.each([
+  ['index.d.ts', [...NEXT_TYPES, ...RSBUILD_TYPES]],
+  ['next.d.ts', [...VITE_TYPES, ...RSBUILD_TYPES]],
+  ['rsbuild.d.ts', [...VITE_TYPES, ...NEXT_TYPES]],
+])('declares %s without the types of other bundlers', (entry, others) => {
+  const external = findExternalTypes(declarations, entry);
+
+  expect(external.filter((name) => others.includes(name))).toEqual([]);
 });
