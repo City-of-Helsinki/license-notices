@@ -1,8 +1,8 @@
 # @city-of-helsinki/license-notices
 
 Writes the license notices of every third-party package bundled into the
-production build of a Vite or Next.js application, and serves them from the
-root of the deployed application.
+production build of a Vite, Next.js or webpack application, and serves them
+from the root of the deployed application.
 
 ## Why
 
@@ -65,7 +65,8 @@ the build with a message that says what to check. See
    module.exports = { thirdPartyLicensesConfig };
    ```
 
-3. Add it to the build, see [Vite](#vite) or [Next.js](#nextjs) below.
+3. Add it to the build, see [Vite](#vite), [Next.js](#nextjs) or
+   [webpack](#webpack) below.
 
 4. Make sure the application's own `LICENSE` file is present when the build
    runs, because the notices start with the application's own license. In a
@@ -177,11 +178,48 @@ module.exports = withSentryConfig(module.exports, {
   `@city-of-helsinki/license-notices/next` there, since the types of the main
   entry point refer to Vite.
 
+### Webpack
+
+Add `ThirdPartyLicensesPlugin`, from the
+`@city-of-helsinki/license-notices/webpack` entry point, to the plugins of the
+webpack config. In a Gatsby site, add it in `gatsby-node.js` for the
+`build-javascript` stage, which builds what browsers load:
+
+```js
+const {
+  ThirdPartyLicensesPlugin,
+} = require('@city-of-helsinki/license-notices/webpack');
+
+const {
+  thirdPartyLicensesConfig,
+} = require('./scripts/thirdPartyLicenses.config');
+
+exports.onCreateWebpackConfig = ({ stage, actions }) => {
+  if (stage === 'build-javascript') {
+    actions.setWebpackConfig({
+      plugins: [new ThirdPartyLicensesPlugin(thirdPartyLicensesConfig)],
+    });
+  }
+};
+```
+
+- The notices are emitted into the build output, `output.path`, which is
+  `public` in Gatsby, and served under its `pathPrefix`. A failing license
+  becomes a compilation error, which fails the build.
+- The `build-html` stage renders the pages on the server, and is not sent to
+  browsers, so the plugin is left out of it. Child compilations are skipped.
+- The project directory is webpack's `context`. An app in a monorepo whose
+  own directory holds no `LICENSE`, or the wrong one, names the application's
+  license file with `projectLicenseFile`, such as `'../LICENSE'`, and lists
+  its workspace packages in `firstPartyPackages`.
+- The entry point is an ES module, which a CommonJS `gatsby-node.js` can
+  `require` on Node 22.12 and later.
+
 ## What the notices contain
 
 - The license of the application itself, read from the `LICENSE`, `LICENCE`
-  or `COPYING` file at the Vite root or in the Next project directory, and a
-  link to its source.
+  or `COPYING` file at the Vite root, in the Next project directory or in
+  webpack's `context`, or from `projectLicenseFile`, and a link to its source.
 - One entry per bundled package and version, sorted by name: its license, the
   license it declares when a decision replaced it, the reason for the
   decision, and the package's own license file.
@@ -216,15 +254,22 @@ set produces a byte-identical file.
   package it is inside of, or in the pnpm virtual store, the package in the
   same store directory. When neither tells, the build fails, see below.
 
+- **webpack:** the module stats of the compilation. A package counts when a
+  module of it is in a chunk, including modules concatenated into another
+  one, and modules whose used exports webpack inlined as constants. So tree
+  shaking is followed in the same way.
+
 ## Configuration
 
-| Option                 | Description                                                                                                                                                  |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `repositoryUrl`        | Required. Browsable URL of the application's source, named as its source in the notices.                                                                     |
-| `licenseDecisions`     | Licenses to replace, see [License decisions](#license-decisions).                                                                                            |
-| `sassResolvedPackages` | Packages whose styles Sass inlines while compiling the stylesheets. The bundler never sees them, so they have to be listed, for example `hds-design-tokens`. |
-| `noticesFileName`      | Name of the notices file. Defaults to `third-party-licenses.txt`.                                                                                            |
-| `manifestFileName`     | Name of the JSON manifest. Defaults to `oss-licenses.json`; `false` leaves it out.                                                                           |
+| Option                 | Description                                                                                                                                                                                                                |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repositoryUrl`        | Required. Browsable URL of the application's source, named as its source in the notices.                                                                                                                                   |
+| `licenseDecisions`     | Licenses to replace, see [License decisions](#license-decisions).                                                                                                                                                          |
+| `firstPartyPackages`   | Packages that are part of the application itself, such as the workspace packages of a monorepo, by name or as a whole scope such as `@scope/*`. They are under the application's license, and are left out of the notices. |
+| `projectLicenseFile`   | The application's license file, relative to the project directory, for a project whose own directory holds none or the wrong one, such as `../LICENSE`.                                                                    |
+| `sassResolvedPackages` | Packages whose styles Sass inlines while compiling the stylesheets. The bundler never sees them, so they have to be listed, for example `hds-design-tokens`.                                                               |
+| `noticesFileName`      | Name of the notices file. Defaults to `third-party-licenses.txt`.                                                                                                                                                          |
+| `manifestFileName`     | Name of the JSON manifest. Defaults to `oss-licenses.json`; `false` leaves it out.                                                                                                                                         |
 
 ### License decisions
 
@@ -305,7 +350,9 @@ scope later:
 | `License "…" for <package> is not a valid SPDX expression!`          | Read the package's license file and add a license decision naming its SPDX identifier.                                                                             |
 | `<package> declares "…", but the license decision "…" applies only…` | The package's license changed, or a new package matched a scope pattern. Read its license, then update or add the decision.                                        |
 | `<package> is distributed under "…", and there are no notice rules…` | A GPL-3.0, LGPL, AGPL or EUPL license, which needs more than a notice. Elect another license with a decision if one is offered, or add notice rules for it here.   |
-| `Distributed package "…" was not found in node_modules…`             | A package listed in `sassResolvedPackages` is not installed.                                                                                                       |
+| `Distributed package "…" was not found in node_modules…`             | A package listed in `sassResolvedPackages` is not installed, in the project or in a directory above it.                                                            |
+| `The project license file "…" was not found in …`                    | Fix the path in `projectLicenseFile`, which is relative to the project directory.                                                                                  |
+| `First-party package "…" is neither a package name nor a scope…`     | An entry in `firstPartyPackages` is a pattern other than a whole scope. List the packages by name, or use `@scope/*`.                                              |
 | `…the Next config must enable productionBrowserSourceMaps.`          | Enable `productionBrowserSourceMaps` in the Next config. The source maps are then served along with the chunks.                                                    |
 | `No chunk in … names a source map…`                                  | Something removes the source maps before the notices are written. Put `withThirdPartyLicenses` inside the wrapper that does.                                       |
 | `The source maps of the client build name files in node_modules…`    | A package ships source maps naming files outside of it, outside the pnpm virtual store. Set `experimental.turbopackInputSourceMaps` to `false` in the Next config. |
@@ -328,8 +375,8 @@ is still worthwhile.
 
 ## Limitations
 
-- **Vite 7 and 8, and Next.js 16** with Turbopack or webpack. Other bundlers
-  and frameworks are not supported.
+- **Vite 7 and 8, Next.js 16** with Turbopack or webpack, **and webpack 5**.
+  Other bundlers and frameworks are not supported.
 - **npm packages in the bundle only.** Images, fonts and scripts loaded from a
   CDN are not covered, and belong in the application's own documentation.
 - **Client code only.** Code that runs only on the server, such as the server
