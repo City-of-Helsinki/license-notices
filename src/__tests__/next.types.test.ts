@@ -2,12 +2,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import ts from 'typescript';
-import { expect, it } from 'vitest';
+import { beforeAll, expect, it } from 'vitest';
 
 const SOURCE_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..'
 );
+// Emitting the declarations of the whole source takes seconds on a CI runner.
+const EMIT_TIMEOUT = 60_000;
 // The packages whose types import those of Vite or Rollup.
 const VITE_TYPES = ['vite', 'rollup', 'rollup-license-plugin'];
 
@@ -44,8 +46,13 @@ function importsOf(text: string): string[] {
   );
 }
 
+let declarations: Map<string, string>;
+
+beforeAll(() => {
+  declarations = emitDeclarations();
+}, EMIT_TIMEOUT);
+
 it('declares the Next entry point without the types of vite', () => {
-  const declarations = emitDeclarations();
   const reached = new Set<string>();
   const external = new Set<string>();
   const visit = (file: string) => {
