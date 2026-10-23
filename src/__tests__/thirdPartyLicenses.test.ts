@@ -10,12 +10,17 @@ import {
   compareCodeUnits,
   formatAuthor,
   findDecision,
+  isFirstParty,
+  isLicenseFileFor,
   findInstalledPackages,
+  findSassResolvedPackages,
+  readProjectLicenseText,
   reconstructLicenseText,
   renderManifest,
   renderNotices,
   resolvePackage,
   thirdPartyLicenses,
+  validateFirstPartyPackages,
   wrapText,
   type ThirdPartyLicensesConfig,
 } from '../thirdPartyLicenses.js';
@@ -350,6 +355,200 @@ describe('resolvePackage', () => {
   });
 });
 
+describe('isLicenseFileFor', () => {
+  it('matches a license file named for a license', () => {
+    for (const name of [
+      'LICENSE.MIT',
+      'LICENSE-MIT',
+      'licence.mit.txt',
+      'License-Apache-2.0.md',
+      'LICENCE.MPL-2.0',
+    ]) {
+      const license = name.match(/MIT|Apache-2\.0|MPL-2\.0/i)![0];
+      expect(isLicenseFileFor(name, license), name).toBe(true);
+    }
+  });
+
+  it('matches no other file', () => {
+    expect(isLicenseFileFor('LICENSE', 'MIT')).toBe(false);
+    expect(isLicenseFileFor('LICENSE.MIT.bak', 'MIT')).toBe(false);
+    expect(isLicenseFileFor('LICENSE-MPL', 'MPL-2.0')).toBe(false);
+    expect(isLicenseFileFor('LICENSE.MPL-2.0', 'MIT')).toBe(false);
+    expect(isLicenseFileFor('NOTICE.MIT', 'MIT')).toBe(false);
+  });
+});
+
+describe('a license elected from a choice', () => {
+  let project: TempProject;
+
+  afterEach(() => project.remove());
+
+  const MIT_TEXT =
+    'MIT License\n\nCopyright (c) Saša Jovanić\n\nPermission is hereby ' +
+    'granted, free of charge, to any person obtaining a copy\n';
+  const APACHE_TEXT =
+    '\n                                 Apache License\n' +
+    '                           Version 2.0, January 2004\n';
+  const MPL_TEXT = 'Mozilla Public License Version 2.0\n==================\n';
+
+  /** Resolves a package installed with the given files, as decided. */
+  const resolveInstalled = ({
+    name,
+    declared,
+    files,
+    decision,
+    reportedText,
+  }: {
+    name: string;
+    declared: string;
+    files: Record<string, string>;
+    decision: { license: string; licenseFile?: string };
+    reportedText?: string;
+  }) => {
+    project = createTempProject(
+      Object.fromEntries(
+        Object.entries(files).map(([file, text]) => [
+          `node_modules/${name}/${file}`,
+          text,
+        ])
+      )
+    );
+    const dir = path.join(project.root, 'node_modules', name);
+    return resolvePackage(
+      pkg({
+        name,
+        license: decision.license,
+        author: 'Saša Jovanić',
+        licenseText: reportedText,
+      }),
+      config({
+        licenseDecisions: { [name]: { ...decision, note: 'Elected.' } },
+      }),
+      () => ({ declaredLicense: declared, dir })
+    );
+  };
+
+  it('uses the file named for the elected license', () => {
+    const resolved = resolveInstalled({
+      name: 'ibantools',
+      declared: 'MIT or MPL-2.0',
+      files: {
+        LICENSE: 'MIT OR MPL-2.0',
+        'LICENSE.MIT': MIT_TEXT,
+        'LICENSE.MPL-2.0': MPL_TEXT,
+      },
+      decision: { license: 'MIT' },
+      reportedText: 'MIT OR MPL-2.0',
+    });
+
+    expect(resolved.licenseText).toContain('Copyright (c) Saša Jovanić');
+    expect(resolved.licenseTextReconstructed).toBe(false);
+  });
+
+  it('uses the license file whose text is the elected license', () => {
+    // As if the directory listed LICENSE-MPL first, which the order of a
+    // directory listing allows.
+    const resolved = resolveInstalled({
+      name: 'dompurify',
+      declared: '(MPL-2.0 OR Apache-2.0)',
+      files: { LICENSE: APACHE_TEXT, 'LICENSE-MPL': MPL_TEXT },
+      decision: { license: 'Apache-2.0' },
+      reportedText: MPL_TEXT,
+    });
+
+    expect(resolved.licenseText).toContain('Apache License');
+    expect(resolved.licenseText).not.toContain('Mozilla');
+  });
+
+  it('uses the license file the decision names', () => {
+    const resolved = resolveInstalled({
+      name: 'dompurify',
+      declared: '(MPL-2.0 OR Apache-2.0)',
+      files: { LICENSE: APACHE_TEXT, 'LICENSE-MPL': MPL_TEXT },
+      decision: { license: 'MPL-2.0', licenseFile: 'LICENSE-MPL' },
+      reportedText: APACHE_TEXT,
+    });
+
+    expect(resolved.licenseText).toContain('Mozilla Public License');
+  });
+
+  it('fails when the license file the decision names is missing', () => {
+    expect(() =>
+      resolveInstalled({
+        name: 'dompurify',
+        declared: '(MPL-2.0 OR Apache-2.0)',
+        files: { LICENSE: APACHE_TEXT },
+        decision: { license: 'MPL-2.0', licenseFile: 'LICENSE-MPL' },
+        reportedText: APACHE_TEXT,
+      })
+    ).toThrow('dompurify@1.0.0 has no file LICENSE-MPL');
+  });
+
+  it('rebuilds the notice when no license file holds the elected text', () => {
+    const resolved = resolveInstalled({
+      name: 'ibantools',
+      declared: 'MIT or MPL-2.0',
+      files: { LICENSE: 'MIT OR MPL-2.0' },
+      decision: { license: 'MIT' },
+      reportedText: 'MIT OR MPL-2.0',
+    });
+
+    expect(resolved.licenseTextReconstructed).toBe(true);
+    expect(resolved.licenseText).toContain('Copyright (c) Saša Jovanić');
+    expect(renderNotices([resolved], config(), undefined)).toContain(
+      'The license files of this package do not hold the text of the license'
+    );
+  });
+
+  it('fails when no license file holds the elected text and none is kept', () => {
+    expect(() =>
+      resolveInstalled({
+        name: 'ibantools',
+        declared: 'MIT or MPL-2.0',
+        files: { LICENSE: 'MIT OR MPL-2.0', 'LICENSE.MIT': MIT_TEXT },
+        decision: { license: 'MPL-2.0' },
+        reportedText: 'MIT OR MPL-2.0',
+      })
+    ).toThrow(
+      'No license file of ibantools@1.0.0 holds the text of MPL-2.0, the ' +
+        'license elected for it: LICENSE, LICENSE.MIT.'
+    );
+  });
+
+  it('keeps the license file of a package declaring no choice', () => {
+    const resolved = resolveInstalled({
+      name: 'old-bsd',
+      declared: 'BSD',
+      files: { LICENSE: 'Redistribution and use, Copyright Old' },
+      decision: { license: 'BSD-3-Clause' },
+      reportedText: 'Redistribution and use, Copyright Old',
+    });
+
+    expect(resolved.licenseText).toBe('Redistribution and use, Copyright Old');
+    expect(resolved.licenseTextReconstructed).toBe(false);
+  });
+});
+
+describe('isFirstParty', () => {
+  it('matches names and whole scopes', () => {
+    const firstParty = config({ firstPartyPackages: ['hds-core', '@hds/*'] });
+
+    expect(isFirstParty('hds-core', firstParty)).toBe(true);
+    expect(isFirstParty('@hds/x', firstParty)).toBe(true);
+    // The directory of an archived copy, never the name of a package.
+    expect(isFirstParty('hds-core-4.10.0', firstParty)).toBe(false);
+    expect(isFirstParty('hds-react', firstParty)).toBe(false);
+    expect(isFirstParty('hds-core', config())).toBe(false);
+  });
+
+  it('refuses a pattern other than a whole scope', () => {
+    expect(() => validateFirstPartyPackages(['hds-*'])).toThrow(
+      'First-party package "hds-*" is neither a package name nor a scope ' +
+        'pattern such as "@scope/*".'
+    );
+  });
+});
+
 describe('findDecision', () => {
   const decisions = {
     '@ckeditor/*': {
@@ -464,6 +663,48 @@ describe('the license decision guard', () => {
   });
 });
 
+describe('readProjectLicenseText', () => {
+  let project: TempProject;
+
+  afterEach(() => project.remove());
+
+  it('reads the license file the config names', () => {
+    project = createTempProject({
+      'site/LICENSE': 'Gatsby',
+      LICENSE: 'City of Helsinki',
+    });
+
+    expect(
+      readProjectLicenseText(path.join(project.root, 'site'), '../LICENSE')
+    ).toBe('City of Helsinki');
+  });
+
+  it('fails when the license file the config names is missing', () => {
+    project = createTempProject({ 'site/LICENSE': 'Gatsby' });
+
+    expect(() =>
+      readProjectLicenseText(path.join(project.root, 'site'), '../NOPE')
+    ).toThrow('The project license file "../NOPE" was not found');
+  });
+});
+
+describe('findSassResolvedPackages', () => {
+  let project: TempProject;
+
+  afterEach(() => project.remove());
+
+  it('finds a package installed in a directory above the project', () => {
+    project = createTempProject({
+      'node_modules/tokens/package.json': { name: 'tokens', version: '1.0.0' },
+      'site/package.json': { name: 'site' },
+    });
+
+    expect(
+      findSassResolvedPackages(path.join(project.root, 'site'), ['tokens'])
+    ).toEqual([path.join(project.root, 'node_modules/tokens')]);
+  });
+});
+
 describe('findInstalledPackages', () => {
   let project: TempProject;
 
@@ -489,11 +730,13 @@ describe('findInstalledPackages', () => {
           name: 'ckeditor5',
           version: '47.6.1',
           declaredLicense: 'SEE LICENSE IN LICENSE.md',
+          dir: path.join(project.root, 'node_modules/ckeditor5'),
         },
         {
           name: '@ckeditor/ckeditor5-core',
           version: '47.6.1',
           declaredLicense: 'SEE LICENSE IN LICENSE.md',
+          dir: path.join(project.root, 'node_modules/@ckeditor/ckeditor5-core'),
         },
       ])
     );
@@ -512,12 +755,22 @@ describe('findInstalledPackages', () => {
         a.version.localeCompare(b.version)
       )
     ).toEqual([
-      { name: '@scope/dual', version: '1.0.0', declaredLicense: 'MIT' },
-      {
+      expect.objectContaining({
+        name: '@scope/dual',
+        version: '1.0.0',
+        declaredLicense: 'MIT',
+        dir: expect.stringContaining(
+          '@scope+dual@1.0.0/node_modules/@scope/dual'
+        ),
+      }),
+      expect.objectContaining({
         name: '@scope/dual',
         version: '2.0.0',
         declaredLicense: '(MPL-2.0 OR Apache-2.0)',
-      },
+        dir: expect.stringContaining(
+          '@scope+dual@2.0.0_react@19.2.6/node_modules/@scope/dual'
+        ),
+      }),
     ]);
   });
 
@@ -538,6 +791,7 @@ describe('findInstalledPackages', () => {
         name: 'dompurify',
         version: '3.2.7',
         declaredLicense: '(MPL-2.0 OR Apache-2.0)',
+        dir: path.join(project.root, 'node_modules/dompurify'),
       },
     ]);
   });

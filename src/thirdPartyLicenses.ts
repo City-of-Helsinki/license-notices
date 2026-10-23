@@ -10,11 +10,13 @@ import {
   findDecision,
   findInstalledPackages,
   findSassResolvedPackages,
+  isFirstParty,
   readProjectLicenseText,
   renderManifest,
   renderNotices,
   resolvePackage,
   validateDecisions,
+  validateFirstPartyPackages,
   type InstalledPackage,
   type ThirdPartyLicensesConfig,
 } from './core.js';
@@ -35,6 +37,7 @@ export * from './core.js';
 export function thirdPartyLicenses(config: ThirdPartyLicensesConfig): Plugin {
   const decisions = config.licenseDecisions ?? {};
   validateDecisions(decisions);
+  validateFirstPartyPackages(config.firstPartyPackages);
 
   // The project files are looked up from the Vite root, which is only known
   // once the config has been resolved, and not from the working directory.
@@ -55,6 +58,8 @@ export function thirdPartyLicenses(config: ThirdPartyLicensesConfig): Plugin {
 
   const plugin = createViteLicensePlugin({
     outputFilename: false,
+    // Before the license of a package is read, which could fail the build.
+    excludedPackageTest: (name) => isFirstParty(name, config),
     // A package declaring a license that is not a valid SPDX expression fails
     // the build unless a decision replaces it, see findInstalledPackages.
     licenseOverrides,
@@ -63,7 +68,7 @@ export function thirdPartyLicenses(config: ThirdPartyLicensesConfig): Plugin {
         renderNotices(
           resolveAll(packages),
           config,
-          readProjectLicenseText(root)
+          readProjectLicenseText(root, config.projectLicenseFile)
         ),
       ...(manifestFileName
         ? {

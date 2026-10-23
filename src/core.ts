@@ -60,6 +60,12 @@ export type LicenseDecision = {
    * for a scope pattern, which may match packages added later.
    */
   declared?: string;
+  /**
+   * The file of the package that holds the text of the elected license, for
+   * a package that declares a choice of licenses and ships the text of each
+   * in a file whose name does not say which license it holds.
+   */
+  licenseFile?: string;
 };
 
 export type ThirdPartyLicensesConfig = {
@@ -74,6 +80,19 @@ export type ThirdPartyLicensesConfig = {
    * An exact name takes precedence over a pattern.
    */
   licenseDecisions?: Record<string, LicenseDecision>;
+  /**
+   * Packages that are part of the application itself, such as the workspace
+   * packages of a monorepo, under the license of the application. Package
+   * names, or a whole scope such as "@scope/*". They are left out of the
+   * notices and the manifest.
+   */
+  firstPartyPackages?: string[];
+  /**
+   * The license file of the application, relative to the project directory,
+   * for a project whose own directory holds none or the wrong one, such as
+   * an app in a monorepo. Found in the project directory by default.
+   */
+  projectLicenseFile?: string;
   /**
    * Distributed packages that stay invisible to the bundler, because Sass
    * resolves and inlines them while compiling the stylesheets.
@@ -123,6 +142,11 @@ export type ResolvedPackage = {
    * declared licenses, because the package ships no license file.
    */
   licenseTextReconstructed: boolean;
+  /**
+   * Whether the package ships license files, but none holds the text of the
+   * license elected for it, so that the text was rebuilt anyway.
+   */
+  electedTextMissing?: boolean;
 };
 
 /**
@@ -306,6 +330,94 @@ export function readLicenseField(manifest: {
 }
 
 const SCOPE_PATTERN = /^@[^/*]+\/\*$/;
+/** A license file, as rollup-license-plugin finds one. */
+const LICENSE_FILE = /^licen[cs]e/i;
+/**
+ * Words only the text of each license contains, matched with whitespace
+ * collapsed, so that the license file holding the text of an elected
+ * license can be told from the others a package ships.
+ */
+const LICENSE_TEXT_MARKERS: Record<string, (text: string) => boolean> = {
+  MIT: (text) => text.includes('Permission is hereby granted, free of charge'),
+  ISC: (text) =>
+    text.includes('Permission to use, copy, modify, and/or distribute') &&
+    text.includes('provided that the above copyright notice'),
+  'Apache-2.0': (text) => /Apache License,? Version 2\.0/.test(text),
+  'MPL-2.0': (text) => /Mozilla Public License,? [Vv]ersion 2\.0/.test(text),
+  'BSD-2-Clause': (text) =>
+    text.includes('Redistribution and use in source and binary forms') &&
+    !text.includes('Neither the name'),
+  'BSD-3-Clause': (text) =>
+    text.includes('Redistribution and use in source and binary forms') &&
+    text.includes('Neither the name'),
+  'OFL-1.1': (text) => /SIL OPEN FONT LICENSE,? Version 1\.1/i.test(text),
+};
+
+/**
+ * Whether a file is named for a license, such as LICENSE.MIT or
+ * licence-Apache-2.0.txt.
+ */
+export function isLicenseFileFor(fileName: string, license: string): boolean {
+  const id = license.replaceAll(/[.+]/g, (char) => `\\${char}`);
+  return new RegExp(`^licen[cs]e[.-]${id}(\\.(txt|md))?$`, 'i').test(fileName);
+}
+
+/** The license files a package ships, in a stable order. */
+function readLicenseFiles(dir: string): string[] {
+  try {
+    return fs
+      .readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && LICENSE_FILE.test(entry.name))
+      .map((entry) => entry.name)
+      .sort(compareCodeUnits);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The text of the license a decision elects from the choice a package
+ * declares: the file the decision names, a file named for the license, or
+ * a license file holding its text. A package often ships the text of each
+ * license of the choice, next to a file that names only the choice, so the
+ * first license file found cannot be relied on. Undefined when none holds
+ * the text, and the files that were looked at.
+ */
+function findElectedLicenseText(
+  id: string,
+  license: string,
+  decision: LicenseDecision,
+  dir: string | undefined,
+  reportedText: string | undefined
+): { text?: string; files: string[] } {
+  const files = dir === undefined ? [] : readLicenseFiles(dir);
+  const read = (file: string) => fs.readFileSync(path.join(dir!, file), 'utf8');
+
+  if (decision.licenseFile !== undefined) {
+    if (
+      dir === undefined ||
+      !fs.existsSync(path.join(dir, decision.licenseFile))
+    ) {
+      throw new Error(
+        `${id} has no file ${decision.licenseFile}, which its license ` +
+          'decision names as the text of the elected license.'
+      );
+    }
+    return { text: read(decision.licenseFile), files };
+  }
+  const named = files.find((file) => isLicenseFileFor(file, license));
+  if (named !== undefined) {
+    return { text: read(named), files };
+  }
+  const holdsText = LICENSE_TEXT_MARKERS[license];
+  const texts = dir === undefined ? [reportedText ?? ''] : files.map(read);
+  return {
+    text:
+      holdsText &&
+      texts.find((text) => holdsText(text.replaceAll(/\s+/g, ' '))),
+    files,
+  };
+}
 
 /**
  * Refuses decisions that could replace a license nobody has read: a pattern
@@ -337,6 +449,31 @@ export function validateDecisions(
  * The decision that applies to a package, with the key it is configured
  * under. An exact name takes precedence over the pattern of its scope.
  */
+/**
+ * Fails on a first-party entry that is neither a package name nor a whole
+ * scope, which would otherwise silently match nothing.
+ */
+export function validateFirstPartyPackages(names: string[] = []): void {
+  for (const name of names) {
+    if (name.includes('*') && !SCOPE_PATTERN.test(name)) {
+      throw new Error(
+        `First-party package "${name}" is neither a package name nor a ` +
+          'scope pattern such as "@scope/*".'
+      );
+    }
+  }
+}
+
+/** Whether a package is part of the application, by its package name. */
+export function isFirstParty(
+  name: string,
+  config: ThirdPartyLicensesConfig
+): boolean {
+  const names = config.firstPartyPackages ?? [];
+  const scope = name.startsWith('@') ? `${name.split('/')[0]}/*` : undefined;
+  return names.includes(name) || (scope !== undefined && names.includes(scope));
+}
+
 export function findDecision(
   name: string,
   decisions: Record<string, LicenseDecision> = {}
@@ -355,6 +492,8 @@ export type InstalledPackage = {
   name: string;
   version: string;
   declaredLicense?: string;
+  /** The directory the package is installed in. */
+  dir?: string;
 };
 
 function readDirectory(dir: string): string[] {
@@ -418,6 +557,7 @@ export function findInstalledPackages(
           name,
           version: manifest.version,
           declaredLicense: readLicenseField(manifest),
+          dir: path.join(directory, name),
         });
       }
     }
@@ -447,7 +587,8 @@ export function resolvePackage(
   lookupInstalled: (
     name: string,
     version: string
-  ) => Pick<InstalledPackage, 'declaredLicense'> | undefined = () => undefined
+  ) => Pick<InstalledPackage, 'declaredLicense' | 'dir'> | undefined = () =>
+    undefined
 ): ResolvedPackage {
   const [decisionKey, decision] =
     findDecision(pkg.name, config.licenseDecisions) ?? [];
@@ -509,14 +650,39 @@ export function resolvePackage(
     licenseTextReconstructed: false,
   };
 
-  if (pkg.licenseText) {
+  let licenseText: string | undefined = pkg.licenseText;
+  let electedFrom: string[] | undefined;
+  if (
+    decision &&
+    declaredLicense !== undefined &&
+    /\bOR\b/i.test(declaredLicense)
+  ) {
+    const elected = findElectedLicenseText(
+      id,
+      license,
+      decision,
+      installed?.dir,
+      pkg.licenseText
+    );
+    licenseText = elected.text;
+    electedFrom = elected.files;
+  }
+
+  if (licenseText) {
     // Leading blank lines only, so that an indented first line such as the
     // centred Apache-2.0 title keeps its indentation.
-    resolved.licenseText = pkg.licenseText.replace(/^\n+/, '').trimEnd();
+    resolved.licenseText = licenseText.replace(/^\n+/, '').trimEnd();
     return resolved;
   }
 
   const reconstructed = reconstructLicenseText(license, author);
+  if (!reconstructed && electedFrom !== undefined) {
+    throw new Error(
+      `No license file of ${id} holds the text of ${license}, the license ` +
+        `elected for it: ${electedFrom.join(', ') || 'it ships none'}. Name ` +
+        'the file that does as licenseFile in its license decision.'
+    );
+  }
   if (!reconstructed) {
     warnOnce(id, `${id} ships no license file and ${whyNotRebuilt(license)}`);
     return resolved;
@@ -524,13 +690,15 @@ export function resolvePackage(
   if (!author) {
     warnOnce(
       id,
-      `${id} ships no license file and names no author, so its notice ` +
-        'carries no copyright line.'
+      `${id} ships no license file ` +
+        (electedFrom?.length ? `with the text of ${license} ` : '') +
+        'and names no author, so its notice carries no copyright line.'
     );
   }
 
   resolved.licenseText = reconstructed.trimEnd();
   resolved.licenseTextReconstructed = true;
+  resolved.electedTextMissing = (electedFrom?.length ?? 0) > 0 || undefined;
   return resolved;
 }
 
@@ -654,6 +822,20 @@ function renderEntry(
           'text of that license applies.'
       )
     );
+  } else if (pkg.electedTextMissing) {
+    lines.push(
+      wrapText(
+        'The license files of this package do not hold the text of the ' +
+          'license elected above. The notice below was reconstructed from ' +
+          `the canonical text of the ${pkg.license} license and ` +
+          (pkg.author
+            ? 'the author its package.json names.'
+            : 'names no copyright holder, since its package.json names no ' +
+              'author.')
+      ),
+      '',
+      pkg.licenseText
+    );
   } else if (pkg.licenseTextReconstructed) {
     const combined = (parseLicenseTerms(pkg.license)?.parts.length ?? 0) > 1;
     lines.push(
@@ -747,7 +929,19 @@ export function renderManifest(packages: ResolvedPackage[]): string {
 }
 
 /** Reads the license file of the project itself, when it has one. */
-export function readProjectLicenseText(root: string): string | undefined {
+export function readProjectLicenseText(
+  root: string,
+  licenseFile?: string
+): string | undefined {
+  if (licenseFile !== undefined) {
+    const file = path.resolve(root, licenseFile);
+    if (!fs.existsSync(file)) {
+      throw new Error(
+        `The project license file "${licenseFile}" was not found in ${root}.`
+      );
+    }
+    return fs.readFileSync(file, 'utf8');
+  }
   const fileName = fs
     .readdirSync(root)
     .filter((name) => /^(licen[cs]e|copying)([.-].*)?$/i.test(name))
@@ -772,9 +966,17 @@ export function findSassResolvedPackages(
   root: string,
   names: string[] = []
 ): string[] {
+  // The project and each directory above it, nearest first, as Node resolves
+  // a package, so that a package hoisted to the root of a workspace is found.
+  const dirs = [path.resolve(root)];
+  while (path.dirname(dirs.at(-1)!) !== dirs.at(-1)) {
+    dirs.push(path.dirname(dirs.at(-1)!));
+  }
   return names.map((name) => {
-    const packageDir = path.resolve(root, 'node_modules', name);
-    if (!fs.existsSync(packageDir)) {
+    const packageDir = dirs
+      .map((dir) => path.join(dir, 'node_modules', name))
+      .find((candidate) => fs.existsSync(candidate));
+    if (packageDir === undefined) {
       throw new Error(
         `Distributed package "${name}" was not found in node_modules, ` +
           'so its license would be missing from the third-party notices.'
