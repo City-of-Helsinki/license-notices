@@ -789,6 +789,52 @@ describe('findInstalledPackages', () => {
     ]);
   });
 
+  it('finds packages installed in a directory above the project', () => {
+    project = createTempProject({
+      'node_modules/dompurify/package.json': {
+        version: '3.2.7',
+        license: '(MPL-2.0 OR Apache-2.0)',
+      },
+      'node_modules/.pnpm/ckeditor5@47.6.1/node_modules/ckeditor5/package.json':
+        { version: '47.6.1', license: 'SEE LICENSE IN LICENSE.md' },
+      'site/package.json': { name: 'site' },
+    });
+
+    expect(findInstalledPackages(path.join(project.root, 'site'), all)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'dompurify',
+          dir: path.join(project.root, 'node_modules/dompurify'),
+        }),
+        expect.objectContaining({ name: 'ckeditor5', version: '47.6.1' }),
+      ])
+    );
+  });
+
+  it('prefers the package installed nearest to the project', () => {
+    project = createTempProject({
+      'node_modules/dompurify/package.json': { version: '3.2.7' },
+      'site/node_modules/dompurify/package.json': {
+        version: '3.2.7',
+        license: '(MPL-2.0 OR Apache-2.0)',
+      },
+    });
+
+    expect(
+      findInstalledPackages(
+        path.join(project.root, 'site'),
+        (name) => name === 'dompurify'
+      )
+    ).toEqual([
+      {
+        name: 'dompurify',
+        version: '3.2.7',
+        declaredLicense: '(MPL-2.0 OR Apache-2.0)',
+        dir: path.join(project.root, 'site/node_modules/dompurify'),
+      },
+    ]);
+  });
+
   it('reads only the packages the filter includes', () => {
     project = createTempProject({
       'node_modules/dompurify/package.json': {

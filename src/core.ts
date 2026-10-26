@@ -518,6 +518,18 @@ function packageNamesIn(nodeModules: string): string[] {
 }
 
 /**
+ * The project and each directory above it, nearest first, as Node resolves
+ * a package, so that a package hoisted to the root of a workspace is found.
+ */
+function directoriesUp(root: string): string[] {
+  const dirs = [path.resolve(root)];
+  while (path.dirname(dirs.at(-1)!) !== dirs.at(-1)) {
+    dirs.push(path.dirname(dirs.at(-1)!));
+  }
+  return dirs;
+}
+
+/**
  * The installed packages whose name passes the filter, with the license
  * each one declares in its own package.json.
  *
@@ -526,20 +538,26 @@ function packageNamesIn(nodeModules: string): string[] {
  * handed to it as a license override, and it then reports the package with
  * the decided license already in place. It also turns a scope pattern into
  * the names the plugin needs. Packages are looked up where npm, Yarn and a
- * hoisting pnpm install them, and in the pnpm virtual store.
+ * hoisting pnpm install them, and in the pnpm virtual store, in the project
+ * and in each directory above it.
  */
 export function findInstalledPackages(
   root: string,
   include: (name: string) => boolean
 ): InstalledPackage[] {
-  const nodeModules = path.join(root, 'node_modules');
-  const store = path.join(nodeModules, '.pnpm');
-  const directories = [
-    nodeModules,
-    ...readDirectory(store).map((entry) =>
-      path.join(store, entry, 'node_modules')
-    ),
-  ];
+  // Farthest first, so that the package nearest to the project wins.
+  const directories = directoriesUp(root)
+    .reverse()
+    .flatMap((dir) => {
+      const nodeModules = path.join(dir, 'node_modules');
+      const store = path.join(nodeModules, '.pnpm');
+      return [
+        nodeModules,
+        ...readDirectory(store).map((entry) =>
+          path.join(store, entry, 'node_modules')
+        ),
+      ];
+    });
 
   const found = new Map<string, InstalledPackage>();
   for (const directory of directories) {
@@ -968,12 +986,7 @@ export function findSassResolvedPackages(
   root: string,
   names: string[] = []
 ): string[] {
-  // The project and each directory above it, nearest first, as Node resolves
-  // a package, so that a package hoisted to the root of a workspace is found.
-  const dirs = [path.resolve(root)];
-  while (path.dirname(dirs.at(-1)!) !== dirs.at(-1)) {
-    dirs.push(path.dirname(dirs.at(-1)!));
-  }
+  const dirs = directoriesUp(root);
   return names.map((name) => {
     const packageDir = dirs
       .map((dir) => path.join(dir, 'node_modules', name))
