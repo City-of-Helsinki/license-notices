@@ -527,6 +527,21 @@ describe('a license elected from a choice', () => {
     expect(resolved.licenseText).toBe('Redistribution and use, Copyright Old');
     expect(resolved.licenseTextReconstructed).toBe(false);
   });
+
+  it('keeps the license file of a license with "or" in its identifier', () => {
+    const resolved = resolveInstalled({
+      name: 'gpl-lib',
+      declared: 'GPL-2.0-or-later',
+      files: { LICENSE: 'GNU GENERAL PUBLIC LICENSE, Copyright Gpl' },
+      decision: { license: 'GPL-2.0-only' },
+      reportedText: 'GNU GENERAL PUBLIC LICENSE, Copyright Gpl',
+    });
+
+    expect(resolved.licenseText).toBe(
+      'GNU GENERAL PUBLIC LICENSE, Copyright Gpl'
+    );
+    expect(resolved.licenseTextReconstructed).toBe(false);
+  });
 });
 
 describe('isFirstParty', () => {

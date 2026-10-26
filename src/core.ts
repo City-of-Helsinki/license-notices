@@ -652,10 +652,12 @@ export function resolvePackage(
 
   let licenseText: string | undefined = pkg.licenseText;
   let electedFrom: string[] | undefined;
+  // OR as an operator, between spaces, so that the "or" in an identifier
+  // such as GPL-2.0-or-later does not count as a choice.
   if (
     decision &&
     declaredLicense !== undefined &&
-    /\bOR\b/i.test(declaredLicense)
+    /\sOR\s/i.test(declaredLicense)
   ) {
     const elected = findElectedLicenseText(
       id,
