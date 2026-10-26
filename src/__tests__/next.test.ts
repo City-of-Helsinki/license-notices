@@ -187,30 +187,30 @@ describe('findPackageDir', () => {
   });
 
   it('finds a package in the pnpm store from a file outside of it', () => {
-    const store = 'node_modules/.pnpm/@apollo+client@3.14.1/node_modules';
+    const store = 'node_modules/.pnpm/@vendor+client@3.14.1/node_modules';
     project = createTempProject({
-      [`${store}/@apollo/client/package.json`]: packageJson('@apollo/client'),
-      'node_modules/.pnpm/graphql@16.0.0/node_modules/graphql/package.json':
-        packageJson('graphql'),
+      [`${store}/@vendor/client/package.json`]: packageJson('@vendor/client'),
+      'node_modules/.pnpm/peer@16.0.0/node_modules/peer/package.json':
+        packageJson('peer'),
     });
     // A dependency of the package, linked next to it as pnpm does.
     fs.symlinkSync(
-      dir('node_modules/.pnpm/graphql@16.0.0/node_modules/graphql'),
-      dir(`${store}/graphql`),
+      dir('node_modules/.pnpm/peer@16.0.0/node_modules/peer'),
+      dir(`${store}/peer`),
       'dir'
     );
 
-    expect(find(`turbopack:///[project]/${store}/@apollo/src/core.ts`)).toBe(
-      dir(`${store}/@apollo/client`)
+    expect(find(`turbopack:///[project]/${store}/@vendor/src/core.ts`)).toBe(
+      dir(`${store}/@vendor/client`)
     );
   });
 
   it('cannot tell the package of such a file outside the pnpm store', () => {
     project = createTempProject({
-      'node_modules/@apollo/client/package.json': packageJson('@apollo/client'),
+      'node_modules/@vendor/client/package.json': packageJson('@vendor/client'),
     });
 
-    expect(find('node_modules/@apollo/src/core.ts')).toBeUndefined();
+    expect(find('node_modules/@vendor/src/core.ts')).toBeUndefined();
   });
 
   it('resolves a source against a root above the project', () => {
@@ -291,14 +291,14 @@ describe('findClientPackageDirs', () => {
 
   it('fails on files in node_modules that belong to no package', () => {
     project = createTempProject({
-      'node_modules/@apollo/client/package.json': packageJson('@apollo/client'),
-      ...chunk(['turbopack:///[project]/node_modules/@apollo/src/core.ts']),
+      'node_modules/@vendor/client/package.json': packageJson('@vendor/client'),
+      ...chunk(['turbopack:///[project]/node_modules/@vendor/src/core.ts']),
     });
 
     expect(() =>
       findClientPackageDirs(project.root, path.join(project.root, '.next'))
     ).toThrow(
-      /belong to no installed package[^]*node_modules\/@apollo\/src\/core\.ts[^]*turbopackInputSourceMaps/
+      /belong to no installed package[^]*node_modules\/@vendor\/src\/core\.ts[^]*turbopackInputSourceMaps/
     );
   });
 });
@@ -371,8 +371,8 @@ describe('writeThirdPartyLicenses', () => {
 
 describe('npmTarballUrl', () => {
   it('names the tarball the way rollup-license-plugin does', () => {
-    expect(npmTarballUrl('react', '19.2.0')).toBe(
-      'https://registry.npmjs.org/react/-/react-19.2.0.tgz'
+    expect(npmTarballUrl('framework', '19.2.0')).toBe(
+      'https://registry.npmjs.org/framework/-/framework-19.2.0.tgz'
     );
     expect(npmTarballUrl('@scope/pkg', '1.0.0+build.5')).toBe(
       'https://registry.npmjs.org/@scope/pkg/-/pkg-1.0.0.tgz'
