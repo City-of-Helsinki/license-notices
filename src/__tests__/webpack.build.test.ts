@@ -72,10 +72,12 @@ describe('ThirdPartyLicensesPlugin in a webpack build', () => {
   const build = async ({
     config = {},
     usedLicense = 'MIT',
+    symlinks = false,
     runs = 1,
   }: {
     config?: Partial<ThirdPartyLicensesConfig>;
     usedLicense?: string;
+    symlinks?: boolean;
     /** Builds run one after another, with the cache of the earlier ones. */
     runs?: number;
   } = {}): Promise<Stats> => {
@@ -93,7 +95,7 @@ describe('ThirdPartyLicensesPlugin in a webpack build', () => {
       output: { path: path.join(site, 'build') },
       resolve: {
         modules: [path.join(site, 'node_modules'), 'node_modules'],
-        symlinks: false,
+        symlinks,
       },
       cache: { type: 'memory' },
       plugins: [
@@ -156,6 +158,28 @@ describe('ThirdPartyLicensesPlugin in a webpack build', () => {
       await build();
 
       expect(read('third-party-licenses.txt')).not.toContain('hds-core');
+    },
+    BUILD_TIMEOUT
+  );
+
+  it(
+    'leaves a linked first-party package out by its real path',
+    async () => {
+      await build({ symlinks: true });
+
+      expect(read('third-party-licenses.txt')).not.toContain('hds-core');
+    },
+    BUILD_TIMEOUT
+  );
+
+  it(
+    'lists a linked package that is not first-party by its real path',
+    async () => {
+      await build({ symlinks: true, config: { firstPartyPackages: [] } });
+
+      expect(read('third-party-licenses.txt')).toContain(
+        'hds-core@9.0.0\nLicense: MIT\n'
+      );
     },
     BUILD_TIMEOUT
   );

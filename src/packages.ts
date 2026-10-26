@@ -126,6 +126,17 @@ function findOwner(file: string): string | undefined {
 }
 
 /**
+ * The files a source can name: itself when it is absolute, otherwise the
+ * file it names relative to each base directory, nearest first.
+ */
+function sourceCandidates(source: string, baseDirs: string[]): string[] {
+  const sourcePath = sourcePathOf(source);
+  return path.isAbsolute(sourcePath)
+    ? [path.normalize(sourcePath)]
+    : baseDirs.map((dir) => path.join(dir, path.posix.normalize(sourcePath)));
+}
+
+/**
  * The directory of the installed package a dependency source belongs to, or
  * undefined when it cannot be told. A relative source is relative to the
  * root of the bundler, which can be the project or a directory above it, so
@@ -136,11 +147,7 @@ export function findPackageDir(
   source: string,
   baseDirs: string[]
 ): string | undefined {
-  const sourcePath = sourcePathOf(source);
-  const candidates = path.isAbsolute(sourcePath)
-    ? [path.normalize(sourcePath)]
-    : baseDirs.map((dir) => path.join(dir, path.posix.normalize(sourcePath)));
-
+  const candidates = sourceCandidates(source, baseDirs);
   const existing = candidates.find((file) => fs.existsSync(file));
   if (existing !== undefined) {
     return findOwner(existing);
@@ -154,10 +161,59 @@ export function findPackageDir(
   return undefined;
 }
 
+/** Whether a path is a directory or inside of it. */
+function isInside(file: string, dir: string): boolean {
+  const relative = path.relative(dir, file);
+  return (
+    relative !== '..' &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
 /**
- * The directories of the installed packages that the dependency sources of
- * a build belong to, each once. Fails, naming the sources, when any of them
- * belongs to no package, since its license could not be found.
+ * The directory of the package a source outside node_modules belongs to,
+ * when its file is outside the project too: a package linked into
+ * node_modules, which a bundler following symbolic links names by its real
+ * path, such as a workspace package. The nearest package.json above the file
+ * tells, unless it names no version, is private, or contains the project,
+ * like the root of a workspace, whose code is the application's own. A file
+ * in the project is the application's own, and so is a source that names no
+ * file that exists.
+ */
+export function findLinkedPackageDir(
+  source: string,
+  projectDir: string,
+  baseDirs: string[]
+): string | undefined {
+  const existing = sourceCandidates(source, baseDirs).find((file) =>
+    fs.existsSync(file)
+  );
+  if (existing === undefined) {
+    return undefined;
+  }
+  const project = fs.realpathSync(projectDir);
+  const file = fs.realpathSync(existing);
+  if (isInside(file, project)) {
+    return undefined;
+  }
+  const dir = ancestorsOf(path.dirname(file)).find((candidate) =>
+    fs.existsSync(path.join(candidate, 'package.json'))
+  );
+  if (dir === undefined || isInside(project, dir) || !isPackageDir(dir)) {
+    return undefined;
+  }
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(dir, 'package.json'), 'utf8')
+  );
+  return manifest.private === true ? undefined : dir;
+}
+
+/**
+ * The directories of the installed packages that the sources of a build
+ * belong to, each once, including linked packages outside node_modules, see
+ * findLinkedPackageDir. Fails, naming the sources, when any source in
+ * node_modules belongs to no package, since its license could not be found.
  */
 export function resolvePackageDirs(
   projectDir: string,
@@ -168,7 +224,14 @@ export function resolvePackageDirs(
   const baseDirs = ancestorsOf(projectDir);
   const dirs = new Set<string>();
   const unresolved: string[] = [];
-  for (const source of sources.filter(isDependencySource)) {
+  for (const source of sources) {
+    if (!isDependencySource(source)) {
+      const linked = findLinkedPackageDir(source, projectDir, baseDirs);
+      if (linked !== undefined) {
+        dirs.add(linked);
+      }
+      continue;
+    }
     const dir = findPackageDir(source, baseDirs);
     if (dir === undefined) {
       unresolved.push(source);
