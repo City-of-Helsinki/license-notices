@@ -193,4 +193,13 @@ describe('pluginThirdPartyLicenses', () => {
       })
     ).toThrow('must state the license the packages it replaces declare');
   });
+
+  it('refuses a first-party pattern other than a whole scope', () => {
+    expect(() =>
+      pluginThirdPartyLicenses({
+        repositoryUrl: 'https://example.com/app',
+        firstPartyPackages: ['hds-*'],
+      })
+    ).toThrow('First-party package "hds-*" is neither a package name');
+  });
 });
