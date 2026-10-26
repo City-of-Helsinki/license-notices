@@ -107,6 +107,39 @@ describe('findBundledPackageDirs', () => {
     ]);
   });
 
+  it('finds linked packages outside node_modules by their real path', () => {
+    project = createTempProject({
+      'package.json': { name: 'workspace', version: '1.0.0' },
+      'shared/util.js': '',
+      'packages/core/package.json': packageJson('core'),
+      'packages/core/src/i.js': '',
+      'packages/internal/package.json': {
+        ...packageJson('internal'),
+        private: true,
+      },
+      'packages/internal/i.js': '',
+      'packages/draft/package.json': { name: 'draft' },
+      'packages/draft/i.js': '',
+      'site/package.json': packageJson('site'),
+      'site/src/app.ts': '',
+    });
+    const module = (file: string) => ({
+      nameForCondition: path.join(project.root, file),
+      chunks: [0],
+    });
+
+    expect(
+      findBundledPackageDirs(path.join(project.root, 'site'), [
+        module('packages/core/src/i.js'),
+        module('packages/internal/i.js'),
+        module('packages/draft/i.js'),
+        module('shared/util.js'),
+        module('site/src/app.ts'),
+        module('site/src/generated.ts'),
+      ])
+    ).toEqual([fs.realpathSync(path.join(project.root, 'packages/core'))]);
+  });
+
   it('fails on modules in node_modules that belong to no package', () => {
     project = createTempProject({ 'node_modules/ghost/i.js': '' });
     const ghost = path.join(project.root, 'node_modules/ghost/i.js');
