@@ -65,9 +65,9 @@ const resolve = (
   );
 };
 
-const dompurifyDecision = {
+const dualLicensedDecision = {
   licenseDecisions: {
-    dompurify: {
+    'dual-licensed': {
       license: 'Apache-2.0',
       note: 'This distribution elects Apache-2.0.',
     },
@@ -131,10 +131,10 @@ describe('reconstructLicenseText', () => {
   });
 
   it('puts the author above the OFL-1.1 text, which has no copyright line', () => {
-    const text = reconstructLicenseText('OFL-1.1', 'Dave Gandy');
+    const text = reconstructLicenseText('OFL-1.1', 'Font Author');
 
     expect(text?.split('\n').slice(0, 4)).toEqual([
-      'Copyright (c) Dave Gandy',
+      'Copyright (c) Font Author',
       '',
       '-'.repeat(59),
       'SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007',
@@ -154,11 +154,11 @@ describe('reconstructLicenseText', () => {
   });
 
   it('gives each license of an AND expression its own labelled text', () => {
-    const text = reconstructLicenseText('(OFL-1.1 AND MIT)', 'Dave Gandy');
+    const text = reconstructLicenseText('(OFL-1.1 AND MIT)', 'Font Author');
 
     expect(text?.startsWith('License text 1 of 2: OFL-1.1\n\n')).toBe(true);
     expect(text).toContain(
-      'License text 2 of 2: MIT\n\nMIT License\n\nCopyright (c) Dave Gandy'
+      'License text 2 of 2: MIT\n\nMIT License\n\nCopyright (c) Font Author'
     );
     // Both full texts, OFL-1.1 first, as the expression names them.
     expect(text?.indexOf('SIL OPEN FONT LICENSE Version 1.1')).toBeLessThan(
@@ -217,11 +217,11 @@ describe('the OFL-1.1 text', () => {
     const resolved = resolve({
       license: 'OFL-1.1',
       licenseText: undefined,
-      author: 'Dave Gandy',
+      author: 'Font Author',
     });
 
     expect(resolved.licenseText).toBe(
-      `Copyright (c) Dave Gandy\n\n${fs.readFileSync(file, 'utf8').trimEnd()}`
+      `Copyright (c) Font Author\n\n${fs.readFileSync(file, 'utf8').trimEnd()}`
     );
   });
 });
@@ -237,8 +237,8 @@ describe('resolvePackage', () => {
 
   it('records both licenses when a decision applies', () => {
     const resolved = resolve(
-      { name: 'dompurify', license: '(MPL-2.0 OR Apache-2.0)' },
-      dompurifyDecision
+      { name: 'dual-licensed', license: '(MPL-2.0 OR Apache-2.0)' },
+      dualLicensedDecision
     );
 
     expect(resolved.license).toBe('Apache-2.0');
@@ -249,15 +249,17 @@ describe('resolvePackage', () => {
   it('states only the decided license when the declared one is not found', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const resolved = resolvePackage(
-      pkg({ name: 'dompurify', version: '9.9.9', license: 'Apache-2.0' }),
-      config(dompurifyDecision),
+      pkg({ name: 'dual-licensed', version: '9.9.9', license: 'Apache-2.0' }),
+      config(dualLicensedDecision),
       () => undefined
     );
 
     expect(resolved.license).toBe('Apache-2.0');
     expect(resolved.declaredLicense).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('package.json of dompurify@9.9.9 was not found')
+      expect.stringContaining(
+        'package.json of dual-licensed@9.9.9 was not found'
+      )
     );
     warn.mockRestore();
   });
@@ -265,15 +267,15 @@ describe('resolvePackage', () => {
   it('tells a package.json without a license from a missing one', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const resolved = resolvePackage(
-      pkg({ name: 'dompurify', version: '9.9.8', license: 'Apache-2.0' }),
-      config(dompurifyDecision),
+      pkg({ name: 'dual-licensed', version: '9.9.8', license: 'Apache-2.0' }),
+      config(dualLicensedDecision),
       () => ({ declaredLicense: undefined })
     );
 
     expect(resolved.declaredLicense).toBeUndefined();
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining(
-        'package.json of dompurify@9.9.8 declares no license'
+        'package.json of dual-licensed@9.9.8 declares no license'
       )
     );
     expect(warn).not.toHaveBeenCalledWith(
@@ -284,22 +286,22 @@ describe('resolvePackage', () => {
 
   it('reconstructs the text of a package shipping no license file', () => {
     const resolved = resolve({
-      name: 'tiny-case',
+      name: 'no-license-file',
       licenseText: undefined,
-      author: 'Jason Quense',
+      author: 'John Doe',
     });
 
     expect(resolved.licenseTextReconstructed).toBe(true);
-    expect(resolved.licenseText).toContain('Copyright (c) Jason Quense');
+    expect(resolved.licenseText).toContain('Copyright (c) John Doe');
   });
 
   it('rebuilds the notice of a package declaring an AND expression', () => {
     const resolved = resolve({
-      name: 'font-awesome',
+      name: 'icon-font',
       version: '4.7.0',
       license: '(OFL-1.1 AND MIT)',
       licenseText: undefined,
-      author: { name: 'Dave Gandy', email: 'dave@fontawesome.io' },
+      author: { name: 'Font Author', email: 'font@example.test' },
     });
 
     expect(resolved.license).toBe('(OFL-1.1 AND MIT)');
@@ -384,7 +386,7 @@ describe('a license elected from a choice', () => {
   afterEach(() => project.remove());
 
   const MIT_TEXT =
-    'MIT License\n\nCopyright (c) Saša Jovanić\n\nPermission is hereby ' +
+    'MIT License\n\nCopyright (c) Choice Author\n\nPermission is hereby ' +
     'granted, free of charge, to any person obtaining a copy\n';
   const APACHE_TEXT =
     '\n                                 Apache License\n' +
@@ -418,7 +420,7 @@ describe('a license elected from a choice', () => {
       pkg({
         name,
         license: decision.license,
-        author: 'Saša Jovanić',
+        author: 'Choice Author',
         licenseText: reportedText,
       }),
       config({
@@ -430,7 +432,7 @@ describe('a license elected from a choice', () => {
 
   it('uses the file named for the elected license', () => {
     const resolved = resolveInstalled({
-      name: 'ibantools',
+      name: 'choice-files',
       declared: 'MIT or MPL-2.0',
       files: {
         LICENSE: 'MIT OR MPL-2.0',
@@ -441,7 +443,7 @@ describe('a license elected from a choice', () => {
       reportedText: 'MIT OR MPL-2.0',
     });
 
-    expect(resolved.licenseText).toContain('Copyright (c) Saša Jovanić');
+    expect(resolved.licenseText).toContain('Copyright (c) Choice Author');
     expect(resolved.licenseTextReconstructed).toBe(false);
   });
 
@@ -449,7 +451,7 @@ describe('a license elected from a choice', () => {
     // As if the directory listed LICENSE-MPL first, which the order of a
     // directory listing allows.
     const resolved = resolveInstalled({
-      name: 'dompurify',
+      name: 'dual-licensed',
       declared: '(MPL-2.0 OR Apache-2.0)',
       files: { LICENSE: APACHE_TEXT, 'LICENSE-MPL': MPL_TEXT },
       decision: { license: 'Apache-2.0' },
@@ -462,7 +464,7 @@ describe('a license elected from a choice', () => {
 
   it('uses the license file the decision names', () => {
     const resolved = resolveInstalled({
-      name: 'dompurify',
+      name: 'dual-licensed',
       declared: '(MPL-2.0 OR Apache-2.0)',
       files: { LICENSE: APACHE_TEXT, 'LICENSE-MPL': MPL_TEXT },
       decision: { license: 'MPL-2.0', licenseFile: 'LICENSE-MPL' },
@@ -475,18 +477,18 @@ describe('a license elected from a choice', () => {
   it('fails when the license file the decision names is missing', () => {
     expect(() =>
       resolveInstalled({
-        name: 'dompurify',
+        name: 'dual-licensed',
         declared: '(MPL-2.0 OR Apache-2.0)',
         files: { LICENSE: APACHE_TEXT },
         decision: { license: 'MPL-2.0', licenseFile: 'LICENSE-MPL' },
         reportedText: APACHE_TEXT,
       })
-    ).toThrow('dompurify@1.0.0 has no file LICENSE-MPL');
+    ).toThrow('dual-licensed@1.0.0 has no file LICENSE-MPL');
   });
 
   it('rebuilds the notice when no license file holds the elected text', () => {
     const resolved = resolveInstalled({
-      name: 'ibantools',
+      name: 'choice-files',
       declared: 'MIT or MPL-2.0',
       files: { LICENSE: 'MIT OR MPL-2.0' },
       decision: { license: 'MIT' },
@@ -494,7 +496,7 @@ describe('a license elected from a choice', () => {
     });
 
     expect(resolved.licenseTextReconstructed).toBe(true);
-    expect(resolved.licenseText).toContain('Copyright (c) Saša Jovanić');
+    expect(resolved.licenseText).toContain('Copyright (c) Choice Author');
     expect(renderNotices([resolved], config(), undefined)).toContain(
       'The license files of this package do not hold the text of the license'
     );
@@ -503,14 +505,14 @@ describe('a license elected from a choice', () => {
   it('fails when no license file holds the elected text and none is kept', () => {
     expect(() =>
       resolveInstalled({
-        name: 'ibantools',
+        name: 'choice-files',
         declared: 'MIT or MPL-2.0',
         files: { LICENSE: 'MIT OR MPL-2.0', 'LICENSE.MIT': MIT_TEXT },
         decision: { license: 'MPL-2.0' },
         reportedText: 'MIT OR MPL-2.0',
       })
     ).toThrow(
-      'No license file of ibantools@1.0.0 holds the text of MPL-2.0, the ' +
+      'No license file of choice-files@1.0.0 holds the text of MPL-2.0, the ' +
         'license elected for it: LICENSE, LICENSE.MIT.'
     );
   });
@@ -566,29 +568,29 @@ describe('isFirstParty', () => {
 
 describe('findDecision', () => {
   const decisions = {
-    '@ckeditor/*': {
+    '@editor/*': {
       declared: 'SEE LICENSE IN LICENSE.md',
       license: 'GPL-2.0-or-later',
       note: 'Pattern.',
     },
-    '@ckeditor/ckeditor5-react': { license: 'MIT', note: 'Exact.' },
+    '@editor/editor-react': { license: 'MIT', note: 'Exact.' },
   };
 
   it('matches every package of a scope pattern', () => {
-    expect(findDecision('@ckeditor/ckeditor5-core', decisions)?.[0]).toBe(
-      '@ckeditor/*'
+    expect(findDecision('@editor/editor-core', decisions)?.[0]).toBe(
+      '@editor/*'
     );
   });
 
   it('prefers an exact name over the pattern of its scope', () => {
-    expect(findDecision('@ckeditor/ckeditor5-react', decisions)?.[0]).toBe(
-      '@ckeditor/ckeditor5-react'
+    expect(findDecision('@editor/editor-react', decisions)?.[0]).toBe(
+      '@editor/editor-react'
     );
   });
 
   it('does not match an unscoped package of the same name', () => {
-    expect(findDecision('ckeditor', decisions)).toBeUndefined();
-    expect(findDecision('@ckeditorx/core', decisions)).toBeUndefined();
+    expect(findDecision('editor', decisions)).toBeUndefined();
+    expect(findDecision('@editorx/core', decisions)).toBeUndefined();
   });
 });
 
@@ -666,7 +668,7 @@ describe('the license decision guard', () => {
       thirdPartyLicenses(
         config({
           licenseDecisions: {
-            'ckeditor5-*': {
+            'editor-*': {
               declared: 'SEE LICENSE IN LICENSE.md',
               license: 'MIT',
               note: 'Prefix.',
@@ -729,11 +731,11 @@ describe('findInstalledPackages', () => {
 
   it('reads packages installed at the top of node_modules', () => {
     project = createTempProject({
-      'node_modules/ckeditor5/package.json': {
+      'node_modules/editor/package.json': {
         version: '47.6.1',
         license: 'SEE LICENSE IN LICENSE.md',
       },
-      'node_modules/@ckeditor/ckeditor5-core/package.json': {
+      'node_modules/@editor/editor-core/package.json': {
         version: '47.6.1',
         license: 'SEE LICENSE IN LICENSE.md',
       },
@@ -742,16 +744,16 @@ describe('findInstalledPackages', () => {
     expect(findInstalledPackages(project.root, all)).toEqual(
       expect.arrayContaining([
         {
-          name: 'ckeditor5',
+          name: 'editor',
           version: '47.6.1',
           declaredLicense: 'SEE LICENSE IN LICENSE.md',
-          dir: path.join(project.root, 'node_modules/ckeditor5'),
+          dir: path.join(project.root, 'node_modules/editor'),
         },
         {
-          name: '@ckeditor/ckeditor5-core',
+          name: '@editor/editor-core',
           version: '47.6.1',
           declaredLicense: 'SEE LICENSE IN LICENSE.md',
-          dir: path.join(project.root, 'node_modules/@ckeditor/ckeditor5-core'),
+          dir: path.join(project.root, 'node_modules/@editor/editor-core'),
         },
       ])
     );
@@ -759,7 +761,7 @@ describe('findInstalledPackages', () => {
 
   it('finds every version in the pnpm virtual store', () => {
     project = createTempProject({
-      'node_modules/.pnpm/@scope+dual@2.0.0_react@19.2.6/node_modules/@scope/dual/package.json':
+      'node_modules/.pnpm/@scope+dual@2.0.0_framework@19.2.6/node_modules/@scope/dual/package.json':
         { version: '2.0.0', license: '(MPL-2.0 OR Apache-2.0)' },
       'node_modules/.pnpm/@scope+dual@1.0.0/node_modules/@scope/dual/package.json':
         { version: '1.0.0', license: 'MIT' },
@@ -783,7 +785,7 @@ describe('findInstalledPackages', () => {
         version: '2.0.0',
         declaredLicense: '(MPL-2.0 OR Apache-2.0)',
         dir: expect.stringContaining(
-          '@scope+dual@2.0.0_react@19.2.6/node_modules/@scope/dual'
+          '@scope+dual@2.0.0_framework@19.2.6/node_modules/@scope/dual'
         ),
       }),
     ]);
@@ -791,30 +793,32 @@ describe('findInstalledPackages', () => {
 
   it('finds packages installed in a directory above the project', () => {
     project = createTempProject({
-      'node_modules/dompurify/package.json': {
+      'node_modules/dual-licensed/package.json': {
         version: '3.2.7',
         license: '(MPL-2.0 OR Apache-2.0)',
       },
-      'node_modules/.pnpm/ckeditor5@47.6.1/node_modules/ckeditor5/package.json':
-        { version: '47.6.1', license: 'SEE LICENSE IN LICENSE.md' },
+      'node_modules/.pnpm/editor@47.6.1/node_modules/editor/package.json': {
+        version: '47.6.1',
+        license: 'SEE LICENSE IN LICENSE.md',
+      },
       'site/package.json': { name: 'site' },
     });
 
     expect(findInstalledPackages(path.join(project.root, 'site'), all)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: 'dompurify',
-          dir: path.join(project.root, 'node_modules/dompurify'),
+          name: 'dual-licensed',
+          dir: path.join(project.root, 'node_modules/dual-licensed'),
         }),
-        expect.objectContaining({ name: 'ckeditor5', version: '47.6.1' }),
+        expect.objectContaining({ name: 'editor', version: '47.6.1' }),
       ])
     );
   });
 
   it('prefers the package installed nearest to the project', () => {
     project = createTempProject({
-      'node_modules/dompurify/package.json': { version: '3.2.7' },
-      'site/node_modules/dompurify/package.json': {
+      'node_modules/dual-licensed/package.json': { version: '3.2.7' },
+      'site/node_modules/dual-licensed/package.json': {
         version: '3.2.7',
         license: '(MPL-2.0 OR Apache-2.0)',
       },
@@ -823,36 +827,36 @@ describe('findInstalledPackages', () => {
     expect(
       findInstalledPackages(
         path.join(project.root, 'site'),
-        (name) => name === 'dompurify'
+        (name) => name === 'dual-licensed'
       )
     ).toEqual([
       {
-        name: 'dompurify',
+        name: 'dual-licensed',
         version: '3.2.7',
         declaredLicense: '(MPL-2.0 OR Apache-2.0)',
-        dir: path.join(project.root, 'site/node_modules/dompurify'),
+        dir: path.join(project.root, 'site/node_modules/dual-licensed'),
       },
     ]);
   });
 
   it('reads only the packages the filter includes', () => {
     project = createTempProject({
-      'node_modules/dompurify/package.json': {
+      'node_modules/dual-licensed/package.json': {
         version: '3.2.7',
         license: '(MPL-2.0 OR Apache-2.0)',
       },
       // Unreadable, so reading it would throw.
-      'node_modules/react/package.json': '{',
+      'node_modules/framework/package.json': '{',
     });
 
     expect(
-      findInstalledPackages(project.root, (name) => name === 'dompurify')
+      findInstalledPackages(project.root, (name) => name === 'dual-licensed')
     ).toEqual([
       {
-        name: 'dompurify',
+        name: 'dual-licensed',
         version: '3.2.7',
         declaredLicense: '(MPL-2.0 OR Apache-2.0)',
-        dir: path.join(project.root, 'node_modules/dompurify'),
+        dir: path.join(project.root, 'node_modules/dual-licensed'),
       },
     ]);
   });
@@ -923,17 +927,19 @@ describe('wrapText', () => {
 describe('renderNotices', () => {
   it('sorts entries and stays byte-identical between runs', () => {
     const packages = [
-      resolve({ name: 'zod' }),
-      resolve({ name: 'react', version: '19.2.6' }),
-      resolve({ name: 'react', version: '18.0.0' }),
+      resolve({ name: 'validator' }),
+      resolve({ name: 'framework', version: '19.2.6' }),
+      resolve({ name: 'framework', version: '18.0.0' }),
     ];
 
     const output = renderNotices(packages, config());
 
-    expect(output.indexOf('react@18.0.0')).toBeLessThan(
-      output.indexOf('react@19.2.6')
+    expect(output.indexOf('framework@18.0.0')).toBeLessThan(
+      output.indexOf('framework@19.2.6')
     );
-    expect(output.indexOf('react@19.2.6')).toBeLessThan(output.indexOf('zod@'));
+    expect(output.indexOf('framework@19.2.6')).toBeLessThan(
+      output.indexOf('validator@')
+    );
     expect(renderNotices([...packages].reverse(), config())).toBe(output);
   });
 
@@ -952,23 +958,23 @@ describe('renderNotices', () => {
 
   it('marks a reconstructed notice as reconstructed', () => {
     const output = renderNotices(
-      [resolve({ licenseText: undefined, author: 'Jason Quense' })],
+      [resolve({ licenseText: undefined, author: 'John Doe' })],
       config()
     );
 
     expect(output).toContain('ships no license file');
-    expect(output).toContain('Copyright (c) Jason Quense');
+    expect(output).toContain('Copyright (c) John Doe');
     expect(output).toContain('Permission is hereby granted, free of charge');
   });
 
   it('marks a notice rebuilt from an AND expression as such', () => {
     const packages = [
       resolve({
-        name: 'font-awesome',
+        name: 'icon-font',
         version: '4.7.0',
         license: '(OFL-1.1 AND MIT)',
         licenseText: undefined,
-        author: 'Dave Gandy',
+        author: 'Font Author',
       }),
     ];
     const output = renderNotices(packages, config());
@@ -991,8 +997,8 @@ describe('renderNotices', () => {
     const output = renderNotices(
       [
         resolve(
-          { name: 'dompurify', license: '(MPL-2.0 OR Apache-2.0)' },
-          dompurifyDecision
+          { name: 'dual-licensed', license: '(MPL-2.0 OR Apache-2.0)' },
+          dualLicensedDecision
         ),
       ],
       config()
@@ -1009,10 +1015,10 @@ describe('renderNotices', () => {
     const output = renderNotices(
       [
         resolve({
-          name: '@jonkoops/matomo-tracker',
+          name: '@vendor/tracker',
           version: '0.7.0',
           license: 'MPL-2.0',
-          repository: 'https://github.com/jonkoops/matomo-tracker',
+          repository: 'https://github.com/example/tracker',
         }),
       ],
       config()
@@ -1021,8 +1027,8 @@ describe('renderNotices', () => {
     const unwrapped = output.replace(/\s+/g, ' ');
 
     expect(unwrapped).toContain('MPL-2.0 section 3.2 notice');
-    expect(unwrapped).toContain('https://github.com/jonkoops/matomo-tracker');
-    expect(unwrapped).toContain('npm pack @jonkoops/matomo-tracker@0.7.0');
+    expect(unwrapped).toContain('https://github.com/example/tracker');
+    expect(unwrapped).toContain('npm pack @vendor/tracker@0.7.0');
   });
 
   it('falls back to the npm tarball when a package names no repository', () => {
@@ -1147,13 +1153,13 @@ describe('copyleft licenses without notice rules', () => {
 describe('renderManifest', () => {
   it('describes a package the same way the notices do', () => {
     const resolved = resolve(
-      { name: 'dompurify', license: '(MPL-2.0 OR Apache-2.0)' },
-      dompurifyDecision
+      { name: 'dual-licensed', license: '(MPL-2.0 OR Apache-2.0)' },
+      dualLicensedDecision
     );
     const [entry] = JSON.parse(renderManifest([resolved]));
 
     expect(entry).toMatchObject({
-      name: 'dompurify',
+      name: 'dual-licensed',
       version: '1.0.0',
       license: 'Apache-2.0',
       declaredLicense: '(MPL-2.0 OR Apache-2.0)',
@@ -1187,15 +1193,15 @@ describe('renderManifest', () => {
 
   it('sorts entries and stays byte-identical between runs', () => {
     const packages = [
-      resolve({ name: 'zod' }),
-      resolve({ name: 'react', version: '19.2.6' }),
-      resolve({ name: 'react', version: '18.0.0' }),
+      resolve({ name: 'validator' }),
+      resolve({ name: 'framework', version: '19.2.6' }),
+      resolve({ name: 'framework', version: '18.0.0' }),
     ];
     const output = renderManifest(packages);
 
     expect(
       JSON.parse(output).map((entry: { name: string }) => entry.name)
-    ).toEqual(['react', 'react', 'zod']);
+    ).toEqual(['framework', 'framework', 'validator']);
     expect(renderManifest([...packages].reverse())).toBe(output);
   });
 });
