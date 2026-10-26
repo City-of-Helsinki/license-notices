@@ -9,11 +9,13 @@ import { resolvePackageDirs } from '../packages.js';
 /**
  * The stats a bundled module is told by, in the format Rspack shares with
  * webpack: the modules, those concatenated into them, the chunks of each,
- * and its used exports.
+ * and its used exports. Modules taken from the cache too, which all: false
+ * would leave out of a rebuild, and of a build from a persistent cache.
  */
 export const STATS_OPTIONS = {
   all: false,
   modules: true,
+  cachedModules: true,
   nestedModules: true,
   orphanModules: true,
   ids: true,

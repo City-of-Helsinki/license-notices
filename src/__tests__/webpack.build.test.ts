@@ -72,9 +72,12 @@ describe('ThirdPartyLicensesPlugin in a webpack build', () => {
   const build = async ({
     config = {},
     usedLicense = 'MIT',
+    runs = 1,
   }: {
     config?: Partial<ThirdPartyLicensesConfig>;
     usedLicense?: string;
+    /** Builds run one after another, with the cache of the earlier ones. */
+    runs?: number;
   } = {}): Promise<Stats> => {
     project = createTempProject(fixture(usedLicense), FIXTURE_PARENT);
     fs.symlinkSync(
@@ -92,6 +95,7 @@ describe('ThirdPartyLicensesPlugin in a webpack build', () => {
         modules: [path.join(site, 'node_modules'), 'node_modules'],
         symlinks: false,
       },
+      cache: { type: 'memory' },
       plugins: [
         new ThirdPartyLicensesPlugin({
           repositoryUrl: 'https://example.com/app',
@@ -101,13 +105,17 @@ describe('ThirdPartyLicensesPlugin in a webpack build', () => {
         }),
       ],
     });
-    const stats = await new Promise<Stats>((resolve, reject) => {
-      compiler.run((error, result) =>
-        error || !result ? reject(error) : resolve(result)
-      );
-    });
+    let stats: Stats | undefined;
+    for (let run = 0; run < runs; run += 1) {
+      fs.rmSync(path.join(site, 'build'), { recursive: true, force: true });
+      stats = await new Promise<Stats>((resolve, reject) => {
+        compiler.run((error, result) =>
+          error || !result ? reject(error) : resolve(result)
+        );
+      });
+    }
     await new Promise<void>((resolve) => compiler.close(() => resolve()));
-    return stats;
+    return stats!;
   };
   const read = (file: string) =>
     fs.readFileSync(path.join(project.root, 'site/build', file), 'utf8');
@@ -124,6 +132,20 @@ describe('ThirdPartyLicensesPlugin in a webpack build', () => {
       expect(notices).toContain('root-only@1.0.0\nLicense: MIT\n');
       expect(notices).not.toContain('unused@1.0.0');
       expect(read('oss-licenses.json')).toContain('"name": "root-only"');
+    },
+    BUILD_TIMEOUT
+  );
+
+  it(
+    'keeps the notices complete in a build from the cache',
+    async () => {
+      const stats = await build({ runs: 2 });
+
+      expect(stats.hasErrors()).toBe(false);
+      const notices = read('third-party-licenses.txt');
+      expect(notices).toContain('used@1.0.0\nLicense: MIT\n');
+      expect(notices).toContain('hoisted@1.0.0\nLicense: MIT\n');
+      expect(notices).toContain('root-only@1.0.0\nLicense: MIT\n');
     },
     BUILD_TIMEOUT
   );
