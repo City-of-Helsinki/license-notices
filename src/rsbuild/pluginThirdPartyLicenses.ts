@@ -1,6 +1,10 @@
 import type { RsbuildPlugin } from '@rsbuild/core';
 
-import { validateDecisions, type ThirdPartyLicensesConfig } from '../core.js';
+import {
+  validateDecisions,
+  validateFirstPartyPackages,
+  type ThirdPartyLicensesConfig,
+} from '../core.js';
 import { writeNotices } from '../packageNotices.js';
 import { findBundledPackageDirs, type StatsModuleLike } from './modules.js';
 
@@ -48,6 +52,7 @@ export function pluginThirdPartyLicenses(
   config: ThirdPartyLicensesConfig
 ): RsbuildPlugin {
   validateDecisions(config.licenseDecisions ?? {});
+  validateFirstPartyPackages(config.firstPartyPackages);
   return {
     name: 'license-notices:third-party-licenses',
     setup(api) {
